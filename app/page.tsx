@@ -24,31 +24,31 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [splitUrl, setSplitUrl] = useState<string | null>(null);
 
- const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  const canvas = document.createElement('canvas');
-  const img = document.createElement('img');
-  const reader = new FileReader();
-  reader.onload = () => {
-    img.onload = () => {
-      const maxSize = 1200;
-      let { width, height } = img;
-      if (width > maxSize || height > maxSize) {
-        if (width > height) { height = (height / width) * maxSize; width = maxSize; }
-        else { width = (width / height) * maxSize; height = maxSize; }
-      }
-      canvas.width = width;
-      canvas.height = height;
-      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
-      setImage(canvas.toDataURL('image/jpeg', 0.8));
+  const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const canvas = document.createElement('canvas');
+    const img = document.createElement('img');
+    const reader = new FileReader();
+    reader.onload = () => {
+      img.onload = () => {
+        const maxSize = 1200;
+        let { width, height } = img;
+        if (width > maxSize || height > maxSize) {
+          if (width > height) { height = (height / width) * maxSize; width = maxSize; }
+          else { width = (width / height) * maxSize; height = maxSize; }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+        setImage(canvas.toDataURL('image/jpeg', 0.8));
+      };
+      img.src = reader.result as string;
     };
-    img.src = reader.result as string;
+    reader.readAsDataURL(file);
   };
-  reader.readAsDataURL(file);
-};
 
-const parseReceipt = async () => {
+  const parseReceipt = async () => {
     if (!image) return;
     setLoading(true);
     try {
@@ -94,14 +94,13 @@ const parseReceipt = async () => {
       <h1 className="text-2xl font-bold mb-4">SplitCheck</h1>
       <input type="file" accept="image/*" onChange={handleImage} className="mb-4" />
       {image && <img src={image} alt="Receipt" className="mb-4 w-full rounded" />}
-      <button onClick={parseReceipt} disabled={!image || loading}
+      <button
+        onClick={parseReceipt}
+        disabled={!image || loading}
         className="bg-black text-white px-4 py-2 rounded disabled:opacity-50 w-full">
-      {loading ? (
-  <div className="text-center">
-    <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-    Parsing receipt... this takes ~15 seconds
-  </div>
-) : 'Parse Receipt'}
+        {loading ? (
+          <span>Parsing receipt... this takes ~15 seconds</span>
+        ) : 'Parse Receipt'}
       </button>
 
       {receipt && (
@@ -109,7 +108,12 @@ const parseReceipt = async () => {
           <ul className="mt-6 space-y-2">
             {receipt.items.map((item, i) => (
               <li key={i} className="flex justify-between border-b pb-1">
-                <span>{item.quantity}x {item.name} {item.quantity > 1 && <span className="text-gray-400 text-sm">(${item.unitPrice.toFixed(2)} each)</span>}</span>
+                <span>
+                  {item.quantity}x {item.name}
+                  {item.quantity > 1 && (
+                    <span className="text-gray-400 text-sm"> (${item.unitPrice.toFixed(2)} each)</span>
+                  )}
+                </span>
                 <span>${item.totalPrice.toFixed(2)}</span>
               </li>
             ))}
@@ -121,14 +125,12 @@ const parseReceipt = async () => {
             {receipt.tip > 0 && <div className="flex justify-between"><span>Tip</span><span>${receipt.tip.toFixed(2)}</span></div>}
             <div className="flex justify-between font-bold text-black border-t pt-1"><span>Total</span><span>${receipt.total.toFixed(2)}</span></div>
           </div>
-          <button onClick={createSplit}
+          <button
+            onClick={createSplit}
             className="mt-6 bg-green-600 text-white px-4 py-2 rounded w-full">
             Share Split Link
           </button>
         </>
-      )}
-
-      
       )}
     </main>
   );
