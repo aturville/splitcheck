@@ -79,7 +79,14 @@ const parseReceipt = async () => {
       body: JSON.stringify(receipt),
     });
     const { id } = await res.json();
-    setSplitUrl(`${window.location.origin}/split/${id}`);
+    const url = `${window.location.origin}/split/${id}`;
+    setSplitUrl(url);
+    if (navigator.share) {
+      await navigator.share({ title: 'SplitCheck', text: 'Tap to claim your items!', url });
+    } else {
+      await navigator.clipboard.writeText(url);
+      alert('Link copied!');
+    }
   };
 
   return (
@@ -116,26 +123,12 @@ const parseReceipt = async () => {
           </div>
           <button onClick={createSplit}
             className="mt-6 bg-green-600 text-white px-4 py-2 rounded w-full">
-            Create Split Link
+            Share Split Link
           </button>
         </>
       )}
 
-      {splitUrl && (
-        <div className="mt-4 p-4 bg-gray-50 rounded">
-          <p className="text-sm text-gray-600 mb-2">Share this link with your group:</p>
-          <p className="font-mono text-sm break-all">{splitUrl}</p>
-          <button onClick={async () => {
-  if (navigator.share) {
-    await navigator.share({ title: 'SplitCheck', text: 'Claim your items!', url: splitUrl });
-  } else {
-    await navigator.clipboard.writeText(splitUrl);
-    alert('Link copied!');
-  }
-}} className="mt-2 text-sm text-blue-600 underline">
-  Share link
-</button>
-        </div>
+      
       )}
     </main>
   );
