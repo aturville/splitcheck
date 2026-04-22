@@ -1,115 +1,42 @@
-'use client';
+import Anthropic from '@anthropic-ai/sdk';
+import { NextRequest, NextResponse } from 'next/server';
 
-import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+const client = new Anthropic();
 
-interface Item {
-  quantity: number;
-  name: string;
-  totalPrice: number;
-  unitPrice: number;
-}
+export async function POST(req: NextRequest) {
+  const { image } = await req.json();
+  const base64 = image.split(',')[1];
+  const mediaType = image.split(';')[0].split(':')[1];
 
-interface Session {
-  id: string;
-  receipt: {
-    items: Item[];
-    subtotal: number;
-    tax: number;
-    serviceCharge: number;
-    tip: number;
-    total: number;
-  };
-  claims: Record<string, string>;
-}
+  let finalBase64 = base64;
+  let finalMediaType = mediaType;
 
-export default function SplitPage() {
-  const { id } = useParams();
-  const [session, setSession] = useState<Session | null>(null);
-  const [myName, setMyName] = useState('');
-  const [nameSet, setNameSet] = useState(false);
-
-  useEffect(() => {
-    fetch(`/api/session?id=${id}`)
-      .then(r => r.json())
-      .then(setSession);
-  }, [id]);
-
-  const claimItem = async (index: number) => {
-    if (!myName) return;
-    const res = await fetch('/api/session', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, itemIndex: index, name: myName }),
+  if (mediaType === 'image/heic' || mediaType === 'image/heif') {
+    const heicConvert = (await import('heic-convert')).default;
+    const inputBuffer = Buffer.from(base64, 'base64');
+    const converted = await heicConvert({
+      buffer: inputBuffer as unknown as ArrayBuffer,
+      format: 'JPEG',
+      quality: 0.9
     });
-    const updated = await res.json();
-    setSession(updated);
-  };
-
-  if (!session) return <div className="p-6">Loading...</div>;
-
-  const myItems = session.receipt.items.filter((_, i) => session.claims[i] === myName);
-  const mySubtotal = myItems.reduce((sum, item) => sum + item.totalPrice, 0);
-  const myShare = mySubtotal > 0 ? (mySubtotal / session.receipt.subtotal) * session.receipt.total : 0;
-
-  if (!nameSet) {
-    return (
-      <main className="max-w-md mx-auto p-6">
-        <h1 className="text-2xl font-bold mb-4">SplitCheck</h1>
-        <p className="mb-4 text-gray-600">Enter your name to claim your items.</p>
-        <input
-          className="border rounded px-3 py-2 w-full mb-3"
-          placeholder="Your name"
-          value={myName}
-          onChange={e => setMyName(e.target.value)}
-        />
-        <button
-          onClick={() => setNameSet(true)}
-          disabled={!myName}
-          className="bg-black text-white px-4 py-2 rounded w-full disabled:opacity-50">
-          Continue
-        </button>
-      </main>
-    );
+    finalBase64 = Buffer.from(converted as ArrayBuffer).toString('base64');
+    finalMediaType = 'image/jpeg';
   }
 
-  return (
-    <main className="max-w-md mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-1">SplitCheck</h1>
-      <p className="text-gray-500 mb-4">Hi {myName} — tap items you ordered.</p>
-      <ul className="space-y-2">
-        {session.receipt.items.map((item, i) => {
-          const claimedBy = session.claims[i];
-          const isMine = claimedBy === myName;
-          return (
-            <li
-              key={i}
-              onClick={() => claimItem(i)}
-              className={`flex justify-between border-b pb-2 cursor-pointer rounded px-2 py-1 ${isMine ? 'bg-green-100' : claimedBy ? 'bg-gray-100 opacity-50' : 'hover:bg-gray-50'}`}
-            >
-              <span>
-                {item.quantity}x {item.name}
-                {claimedBy && (
-                  <span className="text-xs ml-2 text-gray-500">({claimedBy})</span>
-                )}
-              </span>
-              <span>${item.totalPrice.toFixed(2)}</span>
-            </li>
-          );
-        })}
-      </ul>
-      {myItems.length > 0 && (
-        <div className="mt-6 p-4 bg-gray-50 rounded">
-          <div className="flex justify-between text-sm text-gray-600 mb-1">
-            <span>Your items</span>
-            <span>${mySubtotal.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between font-bold text-lg">
-            <span>Your total (with tax and fees)</span>
-            <span>${myShare.toFixed(2)}</span>
-          </div>
-        </div>
-      )}
-    </main>
-  );
+  const response = await client.messages.create({
+    model: 'claude-opus-4-6',
+    max_tokens: 1024,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: finalMediaType as 'image/jpeg', data: finalBase64 } },
+        { type: 'text', text: 'Parse this receipt. Return ONLY valid JSON, no markdown, no backticks, no explanation. Format: {"items": [{"quantity": 1, "name": "Item Name", "totalPrice": 0.00, "unitPrice": 0.00}], "subtotal": 0.00, "tax": 0.00, "tip": 0.00, "serviceCharge": 0.00, "total": 0.00}' }
+      ]
+    }]
+  });
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const clean = text.replace(/```json|```/g, '').trim();
+  const parsed = JSON.parse(clean);
+  return NextResponse.json(parsed);
 }
