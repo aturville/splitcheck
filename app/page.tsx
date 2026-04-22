@@ -125,10 +125,16 @@ const parseReceipt = async () => {
         <div className="mt-4 p-4 bg-gray-50 rounded">
           <p className="text-sm text-gray-600 mb-2">Share this link with your group:</p>
           <p className="font-mono text-sm break-all">{splitUrl}</p>
-          <button onClick={() => navigator.clipboard.writeText(splitUrl)}
-            className="mt-2 text-sm text-blue-600 underline">
-            Copy link
-          </button>
+          <button onClick={async () => {
+  if (navigator.share) {
+    await navigator.share({ title: 'SplitCheck', text: 'Claim your items!', url: splitUrl });
+  } else {
+    await navigator.clipboard.writeText(splitUrl);
+    alert('Link copied!');
+  }
+}} className="mt-2 text-sm text-blue-600 underline">
+  Share link
+</button>
         </div>
       )}
     </main>
