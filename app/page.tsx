@@ -63,7 +63,12 @@ export default function Home() {
       {image && <img src={image} alt="Receipt" className="mb-4 w-full rounded" />}
       <button onClick={parseReceipt} disabled={!image || loading}
         className="bg-black text-white px-4 py-2 rounded disabled:opacity-50 w-full">
-        {loading ? 'Parsing...' : 'Parse Receipt'}
+      {loading ? (
+  <div className="text-center">
+    <div className="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+    Parsing receipt... this takes ~15 seconds
+  </div>
+) : 'Parse Receipt'}
       </button>
 
       {receipt && (
