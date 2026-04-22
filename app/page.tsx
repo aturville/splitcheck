@@ -59,7 +59,7 @@ export default function Home() {
   return (
     <main className="max-w-md mx-auto p-6">
       <h1 className="text-2xl font-bold mb-4">SplitCheck</h1>
-      <input type="file" accept="image/*" capture="environment" onChange={handleImage} className="mb-4" />
+      <input type="file" accept="image/*" onChange={handleImage} className="mb-4" />
       {image && <img src={image} alt="Receipt" className="mb-4 w-full rounded" />}
       <button onClick={parseReceipt} disabled={!image || loading}
         className="bg-black text-white px-4 py-2 rounded disabled:opacity-50 w-full">
