@@ -32,16 +32,26 @@ export default function Home() {
     reader.readAsDataURL(file);
   };
 
-  const parseReceipt = async () => {
+const parseReceipt = async () => {
     if (!image) return;
     setLoading(true);
-    const res = await fetch('/api/parse-receipt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image }),
-    });
-    const data = await res.json();
-    setReceipt(data);
+    try {
+      const res = await fetch('/api/parse-receipt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image }),
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        alert('Error: ' + err);
+        setLoading(false);
+        return;
+      }
+      const data = await res.json();
+      setReceipt(data);
+    } catch (e) {
+      alert('Failed to parse receipt. Please try again.');
+    }
     setLoading(false);
   };
 
