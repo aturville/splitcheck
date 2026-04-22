@@ -24,13 +24,29 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [splitUrl, setSplitUrl] = useState<string | null>(null);
 
-  const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => setImage(reader.result as string);
-    reader.readAsDataURL(file);
+ const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const canvas = document.createElement('canvas');
+  const img = document.createElement('img');
+  const reader = new FileReader();
+  reader.onload = () => {
+    img.onload = () => {
+      const maxSize = 1200;
+      let { width, height } = img;
+      if (width > maxSize || height > maxSize) {
+        if (width > height) { height = (height / width) * maxSize; width = maxSize; }
+        else { width = (width / height) * maxSize; height = maxSize; }
+      }
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+      setImage(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.src = reader.result as string;
   };
+  reader.readAsDataURL(file);
+};
 
 const parseReceipt = async () => {
     if (!image) return;
