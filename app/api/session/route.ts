@@ -30,11 +30,12 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { id, itemIndex, name } = await req.json();
+  const { id, itemIndex, name, quantity } = await req.json();
   const data = await redis.get(id);
   if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const session = typeof data === 'string' ? JSON.parse(data) : data;
-  session.claims[itemIndex] = name;
+  if (!session.claims[itemIndex]) session.claims[itemIndex] = [];
+  session.claims[itemIndex].push({ name, quantity });
   await redis.set(id, JSON.stringify(session), { ex: 86400 });
   return NextResponse.json(session);
 }
