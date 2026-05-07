@@ -34,7 +34,7 @@ export default function SplitPage() {
   const [session, setSession] = useState<Session | null>(null);
   const [myName, setMyName] = useState('');
   const [nameSet, setNameSet] = useState(false);
-  const [claimingIndex, setClaimingIndex] = useState<number | null>(null);
+  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [claimQty, setClaimQty] = useState(1);
   const [claimAmount, setClaimAmount] = useState('');
   const [claimMode, setClaimMode] = useState<'quantity' | 'amount'>('quantity');
@@ -51,11 +51,10 @@ export default function SplitPage() {
   }, [id]);
 
   const submitClaim = async () => {
-    if (claimingIndex === null) return;
-    const item = session!.receipt.items[claimingIndex];
+    if (expandedIndex === null) return;
     const payload: { id: unknown; itemIndex: number; name: string; quantity?: number; amount?: number } = {
       id,
-      itemIndex: claimingIndex,
+      itemIndex: expandedIndex,
       name: myName,
     };
     if (claimMode === 'amount') {
@@ -68,7 +67,7 @@ export default function SplitPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    setClaimingIndex(null);
+    setExpandedIndex(null);
     setClaimQty(1);
     setClaimAmount('');
   };
@@ -96,10 +95,6 @@ export default function SplitPage() {
     return (session.claims[itemIndex] || []).reduce((sum, c) => sum + (c.quantity || 0), 0);
   };
 
-  const getClaimedAmount = (itemIndex: number) => {
-    return (session.claims[itemIndex] || []).reduce((sum, c) => sum + (c.amount || 0), 0);
-  };
-
   if (!nameSet) {
     return (
       <main className="max-w-md mx-auto p-6">
@@ -122,79 +117,81 @@ export default function SplitPage() {
   }
 
   const myTotal = getMyTotal();
-  const item = claimingIndex !== null ? session.receipt.items[claimingIndex] : null;
 
   return (
     <main className="max-w-md mx-auto p-6">
       <h1 className="text-2xl font-bold mb-1">SplitCheck</h1>
       <p className="text-gray-500 mb-4">Hi {myName} — tap items you ordered.</p>
 
-      {claimingIndex !== null && item && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-6 z-50">
-          <div className="bg-white rounded-xl p-6 w-full max-w-sm">
-            <h2 className="font-bold text-lg mb-1">{item.name}</h2>
-            <p className="text-gray-500 text-sm mb-4">${item.unitPrice.toFixed(2)} each · {item.quantity} total</p>
-            <div className="flex gap-2 mb-4">
-              <button
-                onClick={() => setClaimMode('quantity')}
-                className={`flex-1 py-2 rounded ${claimMode === 'quantity' ? 'bg-black text-white' : 'border'}`}>
-                By quantity
-              </button>
-              <button
-                onClick={() => setClaimMode('amount')}
-                className={`flex-1 py-2 rounded ${claimMode === 'amount' ? 'bg-black text-white' : 'border'}`}>
-                By amount
-              </button>
-            </div>
-            {claimMode === 'quantity' ? (
-              <div className="flex items-center gap-4 mb-4">
-                <button onClick={() => setClaimQty(Math.max(1, claimQty - 1))} className="text-2xl px-3">−</button>
-                <span className="text-xl font-bold">{claimQty}</span>
-                <button onClick={() => setClaimQty(Math.min(item.quantity, claimQty + 1))} className="text-2xl px-3">+</button>
-                <span className="text-gray-500">of {item.quantity}</span>
-              </div>
-            ) : (
-              <input
-                type="number"
-                placeholder="Dollar amount (before tax)"
-                value={claimAmount}
-                onChange={e => setClaimAmount(e.target.value)}
-                className="border rounded px-3 py-2 w-full mb-4"
-              />
-            )}
-            <div className="flex gap-2">
-              <button onClick={() => setClaimingIndex(null)} className="flex-1 border py-2 rounded">Cancel</button>
-              <button onClick={submitClaim} className="flex-1 bg-black text-white py-2 rounded">Claim</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <ul className="space-y-2">
+      <ul className="space-y-1">
         {session.receipt.items.map((item, i) => {
           const itemClaims = session.claims[i] || [];
           const claimedQty = getClaimedQty(i);
-          const claimedAmt = getClaimedAmount(i);
           const myClaim = itemClaims.find(c => c.name === myName);
           const fullyClaimedByQty = claimedQty >= item.quantity;
           const isMine = !!myClaim;
+          const isExpanded = expandedIndex === i;
 
           return (
-            <li
-              key={i}
-              onClick={() => !fullyClaimedByQty && setClaimingIndex(i)}
-              className={`border-b pb-2 rounded px-2 py-2 ${isMine ? 'bg-green-50' : fullyClaimedByQty ? 'bg-gray-100 opacity-50' : 'hover:bg-gray-50 cursor-pointer'}`}>
-              <div className="flex justify-between">
-                <span className="font-medium">{item.quantity}x {item.name}</span>
-                <span>${item.totalPrice.toFixed(2)}</span>
+            <li key={i} className={`border rounded-lg overflow-hidden ${isMine ? 'border-green-300' : 'border-gray-200'}`}>
+              <div
+                onClick={() => {
+                  if (fullyClaimedByQty && !isMine) return;
+                  setExpandedIndex(isExpanded ? null : i);
+                  setClaimQty(1);
+                  setClaimAmount('');
+                  setClaimMode('quantity');
+                }}
+                className={`flex justify-between items-center px-3 py-2 cursor-pointer ${isMine ? 'bg-green-50' : fullyClaimedByQty ? 'bg-gray-50 opacity-50' : 'hover:bg-gray-50'}`}>
+                <div>
+                  <span className="font-medium">{item.quantity}x {item.name}</span>
+                  {itemClaims.length > 0 && (
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {itemClaims.map((c, j) => (
+                        <span key={j} className="mr-2">
+                          {c.name}: {c.quantity ? `${c.quantity}x` : `$${c.amount?.toFixed(2)}`}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <span className="text-sm">${item.totalPrice.toFixed(2)}</span>
               </div>
-              {itemClaims.length > 0 && (
-                <div className="mt-1 text-xs text-gray-500">
-                  {itemClaims.map((c, j) => (
-                    <span key={j} className="mr-2">
-                      {c.name}: {c.quantity ? `${c.quantity}x` : `$${c.amount?.toFixed(2)}`}
-                    </span>
-                  ))}
+
+              {isExpanded && (
+                <div className="px-3 py-3 bg-white border-t border-gray-100">
+                  <div className="flex gap-2 mb-3">
+                    <button
+                      onClick={() => setClaimMode('quantity')}
+                      className={`flex-1 py-1.5 text-sm rounded ${claimMode === 'quantity' ? 'bg-black text-white' : 'border'}`}>
+                      Qty
+                    </button>
+                    <button
+                      onClick={() => setClaimMode('amount')}
+                      className={`flex-1 py-1.5 text-sm rounded ${claimMode === 'amount' ? 'bg-black text-white' : 'border'}`}>
+                      $ Amount
+                    </button>
+                  </div>
+                  {claimMode === 'quantity' ? (
+                    <div className="flex items-center gap-3 mb-3">
+                      <button onClick={() => setClaimQty(Math.max(1, claimQty - 1))} className="text-xl w-8 h-8 border rounded">−</button>
+                      <span className="font-bold">{claimQty}</span>
+                      <button onClick={() => setClaimQty(Math.min(item.quantity - claimedQty + (myClaim?.quantity || 0), claimQty + 1))} className="text-xl w-8 h-8 border rounded">+</button>
+                      <span className="text-gray-500 text-sm">of {item.quantity}</span>
+                    </div>
+                  ) : (
+                    <input
+                      type="number"
+                      placeholder="Your share ($)"
+                      value={claimAmount}
+                      onChange={e => setClaimAmount(e.target.value)}
+                      className="border rounded px-3 py-1.5 w-full mb-3 text-sm"
+                    />
+                  )}
+                  <div className="flex gap-2">
+                    <button onClick={() => setExpandedIndex(null)} className="flex-1 border py-1.5 rounded text-sm">Cancel</button>
+                    <button onClick={submitClaim} className="flex-1 bg-black text-white py-1.5 rounded text-sm">Claim</button>
+                  </div>
                 </div>
               )}
             </li>
