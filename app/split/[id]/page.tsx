@@ -29,10 +29,15 @@ export default function SplitPage() {
   const [myName, setMyName] = useState('');
   const [nameSet, setNameSet] = useState(false);
 
-  useEffect(() => {
-    fetch(`/api/session?id=${id}`)
-      .then(r => r.json())
-      .then(setSession);
+useEffect(() => {
+    const fetchSession = () => {
+      fetch(`/api/session?id=${id}`)
+        .then(r => r.json())
+        .then(setSession);
+    };
+    fetchSession();
+    const interval = setInterval(fetchSession, 3000);
+    return () => clearInterval(interval);
   }, [id]);
 
   const claimItem = async (index: number) => {
