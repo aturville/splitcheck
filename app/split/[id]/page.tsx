@@ -183,36 +183,35 @@ export default function SplitPage() {
     return (session.claims[itemIndex] || []).reduce((sum, c) => sum + (c.amount || 0), 0);
   };
 
-  if (!nameSet) {
-    return (
-      <main className="min-h-screen bg-white text-gray-900">
-        <div className="max-w-md mx-auto p-6 pt-12">
-          <h1 className="text-2xl font-bold mb-4">SplitCheck</h1>
-          <p className="mb-4 text-gray-600">Enter your name to claim your items.</p>
-          <input
-            className="border rounded-xl px-3 py-2 w-full mb-3"
-            placeholder="Your name"
-            value={myName}
-            onChange={e => setMyName(e.target.value)}
-          />
-          <button
-            onClick={() => setNameSet(true)}
-            disabled={!myName}
-            className="bg-gray-900 text-white px-4 py-3 rounded-xl w-full disabled:opacity-50 font-medium">
-            Continue
-          </button>
-        </div>
-      </main>
-    );
-  }
-
-  const myTotal = getMyTotal();
+  const myTotal = nameSet ? getMyTotal() : 0;
 
   return (
     <main className="min-h-screen bg-white text-gray-900">
       <div className="max-w-md mx-auto p-6 pt-8">
-        <h1 className="text-2xl font-bold mb-1">SplitCheck</h1>
-        <p className="text-gray-500 mb-4">Hi {myName} — tap items you ordered.</p>
+        <h1 className="text-2xl font-bold mb-3">SplitCheck</h1>
+        {!nameSet ? (
+          <div className="mb-4 p-4 bg-gray-50 rounded-xl">
+            <p className="text-sm text-gray-600 mb-2">Enter your name to claim items</p>
+            <div className="flex gap-2">
+              <input
+                className="flex-1 border rounded-lg px-3 py-2 text-sm"
+                placeholder="Your name"
+                value={myName}
+                onChange={e => setMyName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && myName.trim()) setNameSet(true); }}
+                autoFocus
+              />
+              <button
+                onClick={() => setNameSet(true)}
+                disabled={!myName.trim()}
+                className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm disabled:opacity-50">
+                Go
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-gray-500 mb-4">Hi {myName} — tap items you ordered.</p>
+        )}
 
         <div className="mb-4">
           {session.payer ? (
@@ -299,13 +298,13 @@ export default function SplitPage() {
               <li key={i} className={`border rounded-lg overflow-hidden ${isMine ? 'border-green-300' : 'border-gray-200'}`}>
                 <div
                   onClick={() => {
-                    if (isDisabled) return;
+                    if (!nameSet || isDisabled) return;
                     if (isExpanded) { resetExpanded(); return; }
                     setExpandedIndex(i);
                     setShowContribute(false);
                     setClaimQty(1);
                   }}
-                  className={`flex justify-between items-center px-3 py-2 cursor-pointer ${isMine ? 'bg-green-50' : isDisabled ? 'bg-gray-50 opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}>
+                  className={`flex justify-between items-center px-3 py-2 ${!nameSet ? 'cursor-default' : 'cursor-pointer'} ${isMine ? 'bg-green-50' : isDisabled ? 'bg-gray-50 opacity-50 cursor-not-allowed' : !nameSet ? '' : 'hover:bg-gray-50'}`}>
                   <div>
                     <span className="font-medium">{item.quantity}x {item.name}</span>
                     {itemClaims.length > 0 && (
@@ -409,20 +408,20 @@ export default function SplitPage() {
             <p className="text-xs text-gray-400 mt-0.5">includes tax &amp; fees</p>
             {session.payer && session.payer.name !== myName && (
               <div className="mt-4 space-y-2">
-                {session.payer.venmo && (
-                  <a
-                    href={`venmo://paycharge?txn=pay&recipients=${encodeURIComponent(session.payer.venmo)}&amount=${myTotal.toFixed(2)}&note=SplitCheck`}
-                    className="flex items-center justify-center w-full bg-[#3D95CE] hover:bg-[#3080b0] text-white font-medium py-3 rounded-xl transition-colors">
-                    Pay {session.payer.name} via Venmo
-                  </a>
-                )}
-                {session.payer.cashapp && (
-                  <a
-                    href={`https://cash.app/$${session.payer.cashapp}/${myTotal.toFixed(2)}`}
-                    className="flex items-center justify-center w-full bg-[#00C244] hover:bg-[#00a83a] text-white font-medium py-3 rounded-xl transition-colors">
-                    Pay {session.payer.name} via Cash App
-                  </a>
-                )}
+                <a
+                  href={session.payer.venmo
+                    ? `venmo://paycharge?txn=pay&recipients=${encodeURIComponent(session.payer.venmo)}&amount=${myTotal.toFixed(2)}&note=SplitCheck`
+                    : `venmo://paycharge?txn=pay&amount=${myTotal.toFixed(2)}&note=SplitCheck`}
+                  className="flex items-center justify-center w-full bg-[#3D95CE] hover:bg-[#3080b0] text-white font-medium py-3 rounded-xl transition-colors">
+                  Pay {session.payer.name} via Venmo
+                </a>
+                <a
+                  href={session.payer.cashapp
+                    ? `https://cash.app/$${session.payer.cashapp}/${myTotal.toFixed(2)}`
+                    : `https://cash.app/`}
+                  className="flex items-center justify-center w-full bg-[#00C244] hover:bg-[#00a83a] text-white font-medium py-3 rounded-xl transition-colors">
+                  Pay {session.payer.name} via Cash App
+                </a>
               </div>
             )}
           </div>
