@@ -70,6 +70,17 @@ export default function Home() {
     setLoading(false);
   };
 
+  const claimFirst = async () => {
+    if (!receipt) return;
+    const res = await fetch('/api/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(receipt),
+    });
+    const { id } = await res.json();
+    window.location.href = `/split/${id}`;
+  };
+
   const createSplit = async () => {
     if (!receipt) return;
     const res = await fetch('/api/session', {
@@ -177,8 +188,14 @@ export default function Home() {
             </div>
 
             <button
+              onClick={claimFirst}
+              className="mt-6 w-full bg-gray-900 hover:bg-gray-800 text-white font-medium py-3 rounded-xl transition-colors">
+              Claim My Items First
+            </button>
+
+            <button
               onClick={createSplit}
-              className="mt-6 w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-xl transition-colors">
+              className="mt-2 w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-xl transition-colors">
               Share Split Link
             </button>
 
