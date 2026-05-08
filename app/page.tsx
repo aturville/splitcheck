@@ -23,6 +23,10 @@ export default function Home() {
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [loading, setLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [payerChoice, setPayerChoice] = useState<'me' | 'someone' | 'skip' | null>(null);
+  const [payerName, setPayerName] = useState('');
+  const [payerVenmo, setPayerVenmo] = useState('');
+  const [payerCashApp, setPayerCashApp] = useState('');
 
   const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -71,12 +75,20 @@ export default function Home() {
     setLoading(false);
   };
 
+  const buildPayer = () => {
+    if (!payerChoice || payerChoice === 'skip' || !payerName.trim()) return null;
+    const p: { name: string; venmo?: string; cashapp?: string } = { name: payerName.trim() };
+    if (payerVenmo.trim()) p.venmo = payerVenmo.trim().replace(/^@/, '');
+    if (payerCashApp.trim()) p.cashapp = payerCashApp.trim().replace(/^\$/, '');
+    return p;
+  };
+
   const claimFirst = async () => {
     if (!receipt) return;
     const res = await fetch('/api/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(receipt),
+      body: JSON.stringify({ receipt, payer: buildPayer() }),
     });
     const { id } = await res.json();
     window.location.href = `/split/${id}`;
@@ -87,7 +99,7 @@ export default function Home() {
     const res = await fetch('/api/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(receipt),
+      body: JSON.stringify({ receipt, payer: buildPayer() }),
     });
     const { id } = await res.json();
     const url = `${window.location.origin}/split/${id}`;
@@ -102,6 +114,10 @@ export default function Home() {
   const reset = () => {
     setImage(null);
     setReceipt(null);
+    setPayerChoice(null);
+    setPayerName('');
+    setPayerVenmo('');
+    setPayerCashApp('');
   };
 
   return (
@@ -193,6 +209,42 @@ export default function Home() {
               <div className="flex justify-between font-bold text-gray-900 border-t border-gray-200 pt-2 mt-2 text-base">
                 <span>Total</span><span>${receipt.total.toFixed(2)}</span>
               </div>
+            </div>
+
+            <div className="mt-6 border-t border-gray-100 pt-5">
+              <p className="text-sm font-medium text-gray-700 mb-3">Who paid the bill?</p>
+              <div className="flex gap-2">
+                {(['me', 'someone', 'skip'] as const).map(choice => (
+                  <button
+                    key={choice}
+                    onClick={() => setPayerChoice(choice)}
+                    className={`flex-1 py-2 rounded-lg text-sm border transition-colors ${payerChoice === choice ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                    {choice === 'me' ? 'I paid' : choice === 'someone' ? 'Someone else' : 'Skip'}
+                  </button>
+                ))}
+              </div>
+              {(payerChoice === 'me' || payerChoice === 'someone') && (
+                <div className="mt-3 space-y-2">
+                  <input
+                    placeholder={payerChoice === 'me' ? 'Your name' : 'Their name'}
+                    value={payerName}
+                    onChange={e => setPayerName(e.target.value)}
+                    className="border rounded-xl px-3 py-2 w-full text-sm"
+                  />
+                  <input
+                    placeholder="Venmo @handle (optional)"
+                    value={payerVenmo}
+                    onChange={e => setPayerVenmo(e.target.value)}
+                    className="border rounded-xl px-3 py-2 w-full text-sm"
+                  />
+                  <input
+                    placeholder="Cash App $handle (optional)"
+                    value={payerCashApp}
+                    onChange={e => setPayerCashApp(e.target.value)}
+                    className="border rounded-xl px-3 py-2 w-full text-sm"
+                  />
+                </div>
+              )}
             </div>
 
             <button

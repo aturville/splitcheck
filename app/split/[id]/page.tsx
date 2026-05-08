@@ -16,6 +16,12 @@ interface Claim {
   amount?: number;
 }
 
+interface Payer {
+  name: string;
+  venmo?: string;
+  cashapp?: string;
+}
+
 interface Session {
   id: string;
   receipt: {
@@ -27,6 +33,7 @@ interface Session {
     total: number;
   };
   claims: Record<string, Claim[]>;
+  payer?: Payer | null;
 }
 
 export default function SplitPage() {
@@ -40,6 +47,10 @@ export default function SplitPage() {
   const [contributeAmount, setContributeAmount] = useState('');
   const [contributePeople, setContributePeople] = useState('');
   const [claimQty, setClaimQty] = useState(1);
+  const [showPayerForm, setShowPayerForm] = useState(false);
+  const [payerFormName, setPayerFormName] = useState('');
+  const [payerFormVenmo, setPayerFormVenmo] = useState('');
+  const [payerFormCashApp, setPayerFormCashApp] = useState('');
 
   useEffect(() => {
     const fetchSession = () => {
@@ -121,6 +132,20 @@ export default function SplitPage() {
     });
   };
 
+  const submitPayer = () => {
+    if (!payerFormName.trim()) return;
+    const payer: Payer = { name: payerFormName.trim() };
+    if (payerFormVenmo.trim()) payer.venmo = payerFormVenmo.trim().replace(/^@/, '');
+    if (payerFormCashApp.trim()) payer.cashapp = payerFormCashApp.trim().replace(/^\$/, '');
+    setSession(prev => prev ? { ...prev, payer } : prev);
+    setShowPayerForm(false);
+    fetch('/api/session', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, payer }),
+    });
+  };
+
   const shareLink = async () => {
     const url = window.location.href;
     if (navigator.share) {
@@ -188,6 +213,53 @@ export default function SplitPage() {
       <div className="max-w-md mx-auto p-6 pt-8">
         <h1 className="text-2xl font-bold mb-1">SplitCheck</h1>
         <p className="text-gray-500 mb-4">Hi {myName} — tap items you ordered.</p>
+
+        <div className="mb-4">
+          {session.payer ? (
+            <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl">
+              <p className="text-sm font-medium text-gray-800">Paid by {session.payer.name}</p>
+              {(session.payer.venmo || session.payer.cashapp) && (
+                <p className="text-xs text-gray-500 mt-0.5">
+                  {session.payer.venmo && `Venmo: @${session.payer.venmo}`}
+                  {session.payer.venmo && session.payer.cashapp && ' · '}
+                  {session.payer.cashapp && `Cash App: $${session.payer.cashapp}`}
+                </p>
+              )}
+            </div>
+          ) : showPayerForm ? (
+            <div className="p-3 border border-gray-200 rounded-xl space-y-2">
+              <p className="text-sm font-medium text-gray-700">I paid the bill</p>
+              <input
+                placeholder="Your name"
+                value={payerFormName}
+                onChange={e => setPayerFormName(e.target.value)}
+                className="border rounded-lg px-3 py-1.5 w-full text-sm"
+              />
+              <input
+                placeholder="Venmo @handle (optional)"
+                value={payerFormVenmo}
+                onChange={e => setPayerFormVenmo(e.target.value)}
+                className="border rounded-lg px-3 py-1.5 w-full text-sm"
+              />
+              <input
+                placeholder="Cash App $handle (optional)"
+                value={payerFormCashApp}
+                onChange={e => setPayerFormCashApp(e.target.value)}
+                className="border rounded-lg px-3 py-1.5 w-full text-sm"
+              />
+              <div className="flex gap-2">
+                <button onClick={submitPayer} disabled={!payerFormName.trim()} className="flex-1 bg-black text-white py-1.5 rounded-lg text-sm disabled:opacity-50">Confirm</button>
+                <button onClick={() => setShowPayerForm(false)} className="flex-1 border py-1.5 rounded-lg text-sm">Cancel</button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setShowPayerForm(true); setPayerFormName(myName); }}
+              className="w-full py-2 border border-gray-200 rounded-xl text-sm text-gray-500 hover:bg-gray-50 transition-colors">
+              I paid the bill
+            </button>
+          )}
+        </div>
 
         <ul className="space-y-1">
           {session.receipt.items.map((item, i) => {
@@ -329,11 +401,30 @@ export default function SplitPage() {
         </ul>
 
         {myTotal > 0 && (
-          <div className="mt-6 p-4 bg-gray-50 rounded-xl">
-            <div className="flex justify-between font-bold text-lg">
-              <span>Your total (with tax & fees)</span>
-              <span>${myTotal.toFixed(2)}</span>
+          <div className="mt-6 p-5 bg-gray-50 rounded-2xl">
+            <div className="flex justify-between items-baseline">
+              <span className="font-bold text-xl">Your total</span>
+              <span className="font-bold text-2xl">${myTotal.toFixed(2)}</span>
             </div>
+            <p className="text-xs text-gray-400 mt-0.5">includes tax &amp; fees</p>
+            {session.payer && session.payer.name !== myName && (
+              <div className="mt-4 space-y-2">
+                {session.payer.venmo && (
+                  <a
+                    href={`venmo://paycharge?txn=pay&recipients=${encodeURIComponent(session.payer.venmo)}&amount=${myTotal.toFixed(2)}&note=SplitCheck`}
+                    className="flex items-center justify-center w-full bg-[#3D95CE] hover:bg-[#3080b0] text-white font-medium py-3 rounded-xl transition-colors">
+                    Pay {session.payer.name} via Venmo
+                  </a>
+                )}
+                {session.payer.cashapp && (
+                  <a
+                    href={`https://cash.app/$${session.payer.cashapp}/${myTotal.toFixed(2)}`}
+                    className="flex items-center justify-center w-full bg-[#00C244] hover:bg-[#00a83a] text-white font-medium py-3 rounded-xl transition-colors">
+                    Pay {session.payer.name} via Cash App
+                  </a>
+                )}
+              </div>
+            )}
           </div>
         )}
 

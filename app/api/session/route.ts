@@ -14,12 +14,16 @@ interface Claim {
 }
 
 export async function POST(req: NextRequest) {
-  const receipt = await req.json();
+  const body = await req.json();
+  // Support both new {receipt, payer} shape and old bare-receipt shape
+  const receipt = body.receipt !== undefined ? body.receipt : body;
+  const payer = body.payer ?? null;
   const id = uuidv4();
   const session = {
     id,
     receipt,
     claims: {},
+    payer,
     createdAt: new Date().toISOString(),
   };
   await redis.set(id, JSON.stringify(session), { ex: 86400 });
@@ -36,10 +40,17 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { id, itemIndex, name, quantity, amount, unclaim } = await req.json();
+  const { id, itemIndex, name, quantity, amount, unclaim, payer } = await req.json();
   const data = await redis.get(id);
   if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const session = typeof data === 'string' ? JSON.parse(data) : data;
+
+  if (payer !== undefined) {
+    session.payer = payer;
+    await redis.set(id, JSON.stringify(session), { ex: 86400 });
+    return NextResponse.json(session);
+  }
+
   if (!session.claims[itemIndex]) session.claims[itemIndex] = [];
 
   // Always remove existing claim from this person first
