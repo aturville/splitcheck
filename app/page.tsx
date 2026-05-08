@@ -25,8 +25,6 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [payerChoice, setPayerChoice] = useState<'me' | 'someone' | 'skip' | null>(null);
   const [payerName, setPayerName] = useState('');
-  const [payerVenmo, setPayerVenmo] = useState('');
-  const [payerCashApp, setPayerCashApp] = useState('');
 
   const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -77,10 +75,7 @@ export default function Home() {
 
   const buildPayer = () => {
     if (!payerChoice || payerChoice === 'skip' || !payerName.trim()) return null;
-    const p: { name: string; venmo?: string; cashapp?: string } = { name: payerName.trim() };
-    if (payerVenmo.trim()) p.venmo = payerVenmo.trim().replace(/^@/, '');
-    if (payerCashApp.trim()) p.cashapp = payerCashApp.trim().replace(/^\$/, '');
-    return p;
+    return { name: payerName.trim() };
   };
 
   const claimFirst = async () => {
@@ -116,8 +111,6 @@ export default function Home() {
     setReceipt(null);
     setPayerChoice(null);
     setPayerName('');
-    setPayerVenmo('');
-    setPayerCashApp('');
   };
 
   return (
@@ -224,23 +217,11 @@ export default function Home() {
                 ))}
               </div>
               {(payerChoice === 'me' || payerChoice === 'someone') && (
-                <div className="mt-3 space-y-2">
+                <div className="mt-3">
                   <input
                     placeholder={payerChoice === 'me' ? 'Your name' : 'Their name'}
                     value={payerName}
                     onChange={e => setPayerName(e.target.value)}
-                    className="border rounded-xl px-3 py-2 w-full text-sm"
-                  />
-                  <input
-                    placeholder="Venmo @handle (optional)"
-                    value={payerVenmo}
-                    onChange={e => setPayerVenmo(e.target.value)}
-                    className="border rounded-xl px-3 py-2 w-full text-sm"
-                  />
-                  <input
-                    placeholder="Cash App $handle (optional)"
-                    value={payerCashApp}
-                    onChange={e => setPayerCashApp(e.target.value)}
                     className="border rounded-xl px-3 py-2 w-full text-sm"
                   />
                 </div>

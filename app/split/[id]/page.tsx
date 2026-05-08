@@ -49,8 +49,6 @@ export default function SplitPage() {
   const [claimQty, setClaimQty] = useState(1);
   const [showPayerForm, setShowPayerForm] = useState(false);
   const [payerFormName, setPayerFormName] = useState('');
-  const [payerFormVenmo, setPayerFormVenmo] = useState('');
-  const [payerFormCashApp, setPayerFormCashApp] = useState('');
 
   useEffect(() => {
     const fetchSession = () => {
@@ -135,8 +133,6 @@ export default function SplitPage() {
   const submitPayer = () => {
     if (!payerFormName.trim()) return;
     const payer: Payer = { name: payerFormName.trim() };
-    if (payerFormVenmo.trim()) payer.venmo = payerFormVenmo.trim().replace(/^@/, '');
-    if (payerFormCashApp.trim()) payer.cashapp = payerFormCashApp.trim().replace(/^\$/, '');
     setSession(prev => prev ? { ...prev, payer } : prev);
     setShowPayerForm(false);
     fetch('/api/session', {
@@ -232,18 +228,6 @@ export default function SplitPage() {
                 placeholder="Your name"
                 value={payerFormName}
                 onChange={e => setPayerFormName(e.target.value)}
-                className="border rounded-lg px-3 py-1.5 w-full text-sm"
-              />
-              <input
-                placeholder="Venmo @handle (optional)"
-                value={payerFormVenmo}
-                onChange={e => setPayerFormVenmo(e.target.value)}
-                className="border rounded-lg px-3 py-1.5 w-full text-sm"
-              />
-              <input
-                placeholder="Cash App $handle (optional)"
-                value={payerFormCashApp}
-                onChange={e => setPayerFormCashApp(e.target.value)}
                 className="border rounded-lg px-3 py-1.5 w-full text-sm"
               />
               <div className="flex gap-2">
