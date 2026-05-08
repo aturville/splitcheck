@@ -154,6 +154,10 @@ export default function SplitPage() {
     return (session.claims[itemIndex] || []).reduce((sum, c) => sum + (c.quantity || 0), 0);
   };
 
+  const getClaimedAmount = (itemIndex: number) => {
+    return (session.claims[itemIndex] || []).reduce((sum, c) => sum + (c.amount || 0), 0);
+  };
+
   if (!nameSet) {
     return (
       <main className="min-h-screen bg-white text-gray-900">
@@ -189,23 +193,47 @@ export default function SplitPage() {
           {session.receipt.items.map((item, i) => {
             const itemClaims = session.claims[i] || [];
             const claimedQty = getClaimedQty(i);
+            const claimedAmount = getClaimedAmount(i);
             const myClaim = itemClaims.find(c => c.name === myName);
-            const fullyClaimedByQty = item.quantity > 1 && claimedQty >= item.quantity;
             const isMine = !!myClaim;
-            const isExpanded = expandedIndex === i;
             const isMultiple = item.quantity > 1;
+            const otherClaims = itemClaims.filter(c => c.name !== myName);
+
+            const isFull = isMultiple
+              ? claimedQty >= item.quantity || claimedAmount >= item.totalPrice
+              : itemClaims.length > 0;
+            const isDisabled = isFull && !isMine;
+
+            const myClaimedQty = myClaim?.quantity || 0;
+            const iFullyOwn = isMine && otherClaims.length === 0 && (
+              isMultiple ? myClaimedQty >= item.quantity : !!myClaim?.quantity
+            );
+
+            let progressText: string | null = null;
+            let progressPct = 0;
+            if (!iFullyOwn) {
+              if (isMultiple && claimedQty > 0) {
+                progressText = `${claimedQty} of ${item.quantity} claimed`;
+                progressPct = claimedQty / item.quantity;
+              } else if (claimedAmount > 0) {
+                progressText = `Claimed: $${claimedAmount.toFixed(2)} of $${item.totalPrice.toFixed(2)}`;
+                progressPct = item.totalPrice > 0 ? claimedAmount / item.totalPrice : 0;
+              }
+            }
+
+            const isExpanded = expandedIndex === i;
 
             return (
               <li key={i} className={`border rounded-lg overflow-hidden ${isMine ? 'border-green-300' : 'border-gray-200'}`}>
                 <div
                   onClick={() => {
-                    if (fullyClaimedByQty && !isMine) return;
+                    if (isDisabled) return;
                     if (isExpanded) { resetExpanded(); return; }
                     setExpandedIndex(i);
                     setShowContribute(false);
                     setClaimQty(1);
                   }}
-                  className={`flex justify-between items-center px-3 py-2 cursor-pointer ${isMine ? 'bg-green-50' : fullyClaimedByQty ? 'bg-gray-50 opacity-50' : 'hover:bg-gray-50'}`}>
+                  className={`flex justify-between items-center px-3 py-2 cursor-pointer ${isMine ? 'bg-green-50' : isDisabled ? 'bg-gray-50 opacity-50 cursor-not-allowed' : 'hover:bg-gray-50'}`}>
                   <div>
                     <span className="font-medium">{item.quantity}x {item.name}</span>
                     {itemClaims.length > 0 && (
@@ -220,6 +248,15 @@ export default function SplitPage() {
                   </div>
                   <span className="text-sm">${item.totalPrice.toFixed(2)}</span>
                 </div>
+
+                {progressText && (
+                  <div className={`px-3 pb-2 pt-1 ${isDisabled ? 'opacity-50' : ''}`}>
+                    <p className="text-xs text-gray-400">{progressText}</p>
+                    <div className="mt-1 h-1 bg-gray-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${Math.min(100, progressPct * 100)}%` }} />
+                    </div>
+                  </div>
+                )}
 
                 {isExpanded && (
                   <div className="px-3 py-3 bg-white border-t border-gray-100 space-y-3">
