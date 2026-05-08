@@ -68,38 +68,57 @@ export default function SplitPage() {
       name: myName,
     };
 
+    const newClaim: Claim = { name: myName };
+
     if (override) {
       payload = { ...payload, ...override };
+      if (override.amount !== undefined) newClaim.amount = override.amount;
+      if (override.quantity !== undefined) newClaim.quantity = override.quantity;
     } else if (showContribute) {
       if (contributeMode === 'amount') {
         payload.amount = parseFloat(contributeAmount);
+        newClaim.amount = parseFloat(contributeAmount);
       } else {
         const people = parseInt(contributePeople);
-        payload.amount = item.totalPrice / people;
+        const amount = item.totalPrice / people;
+        payload.amount = amount;
+        newClaim.amount = amount;
       }
     } else {
-      if (item.quantity > 1) {
-        payload.quantity = claimQty;
-      } else {
-        payload.quantity = 1;
-      }
+      const qty = item.quantity > 1 ? claimQty : 1;
+      payload.quantity = qty;
+      newClaim.quantity = qty;
     }
 
-    await fetch('/api/session', {
+    setSession(prev => {
+      if (!prev) return prev;
+      const updatedClaims = { ...prev.claims };
+      updatedClaims[itemIndex] = [...(updatedClaims[itemIndex] || []).filter(c => c.name !== myName), newClaim];
+      return { ...prev, claims: updatedClaims };
+    });
+    resetExpanded();
+
+    fetch('/api/session', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    resetExpanded();
   };
 
   const unclaim = async (itemIndex: number) => {
-    await fetch('/api/session', {
+    setSession(prev => {
+      if (!prev) return prev;
+      const updatedClaims = { ...prev.claims };
+      updatedClaims[itemIndex] = (updatedClaims[itemIndex] || []).filter(c => c.name !== myName);
+      return { ...prev, claims: updatedClaims };
+    });
+    resetExpanded();
+
+    fetch('/api/session', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, itemIndex, name: myName, unclaim: true }),
     });
-    resetExpanded();
   };
 
   const shareLink = async () => {
