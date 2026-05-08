@@ -7,6 +7,12 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
 
+interface Claim {
+  name: string;
+  quantity?: number;
+  amount?: number;
+}
+
 export async function POST(req: NextRequest) {
   const receipt = await req.json();
   const id = uuidv4();
@@ -30,12 +36,22 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { id, itemIndex, name, quantity } = await req.json();
+  const { id, itemIndex, name, quantity, amount, unclaim } = await req.json();
   const data = await redis.get(id);
   if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const session = typeof data === 'string' ? JSON.parse(data) : data;
   if (!session.claims[itemIndex]) session.claims[itemIndex] = [];
-  session.claims[itemIndex].push({ name, quantity });
+
+  // Always remove existing claim from this person first
+  session.claims[itemIndex] = session.claims[itemIndex].filter((c: Claim) => c.name !== name);
+
+  if (!unclaim) {
+    const newClaim: Claim = { name };
+    if (amount !== undefined && amount !== null) newClaim.amount = amount;
+    if (quantity !== undefined && quantity !== null) newClaim.quantity = quantity;
+    session.claims[itemIndex].push(newClaim);
+  }
+
   await redis.set(id, JSON.stringify(session), { ex: 86400 });
   return NextResponse.json(session);
 }
