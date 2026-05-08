@@ -35,9 +35,11 @@ export default function SplitPage() {
   const [myName, setMyName] = useState('');
   const [nameSet, setNameSet] = useState(false);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
+  const [showContribute, setShowContribute] = useState(false);
+  const [contributeMode, setContributeMode] = useState<'amount' | 'people'>('amount');
+  const [contributeAmount, setContributeAmount] = useState('');
+  const [contributePeople, setContributePeople] = useState('');
   const [claimQty, setClaimQty] = useState(1);
-  const [claimAmount, setClaimAmount] = useState('');
-  const [claimMode, setClaimMode] = useState<'quantity' | 'amount'>('quantity');
 
   useEffect(() => {
     const fetchSession = () => {
@@ -50,26 +52,54 @@ export default function SplitPage() {
     return () => clearInterval(interval);
   }, [id]);
 
-  const submitClaim = async () => {
-    if (expandedIndex === null) return;
-    const payload: { id: unknown; itemIndex: number; name: string; quantity?: number; amount?: number } = {
+  const resetExpanded = () => {
+    setExpandedIndex(null);
+    setShowContribute(false);
+    setContributeAmount('');
+    setContributePeople('');
+    setClaimQty(1);
+  };
+
+  const submitClaim = async (itemIndex: number, override?: Partial<Claim>) => {
+    const item = session!.receipt.items[itemIndex];
+    let payload: { id: unknown; itemIndex: number; name: string; quantity?: number; amount?: number } = {
       id,
-      itemIndex: expandedIndex,
+      itemIndex,
       name: myName,
     };
-    if (claimMode === 'amount') {
-      payload.amount = parseFloat(claimAmount);
+
+    if (override) {
+      payload = { ...payload, ...override };
+    } else if (showContribute) {
+      if (contributeMode === 'amount') {
+        payload.amount = parseFloat(contributeAmount);
+      } else {
+        const people = parseInt(contributePeople);
+        payload.amount = item.totalPrice / people;
+      }
     } else {
-      payload.quantity = claimQty;
+      if (item.quantity > 1) {
+        payload.quantity = claimQty;
+      } else {
+        payload.quantity = 1;
+      }
     }
+
     await fetch('/api/session', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    setExpandedIndex(null);
-    setClaimQty(1);
-    setClaimAmount('');
+    resetExpanded();
+  };
+
+  const unclaim = async (itemIndex: number) => {
+    await fetch('/api/session', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, itemIndex, name: myName, unclaim: true }),
+    });
+    resetExpanded();
   };
 
   if (!session) return <div className="p-6">Loading...</div>;
@@ -128,19 +158,20 @@ export default function SplitPage() {
           const itemClaims = session.claims[i] || [];
           const claimedQty = getClaimedQty(i);
           const myClaim = itemClaims.find(c => c.name === myName);
-          const fullyClaimedByQty = claimedQty >= item.quantity;
+          const fullyClaimedByQty = item.quantity > 1 && claimedQty >= item.quantity;
           const isMine = !!myClaim;
           const isExpanded = expandedIndex === i;
+          const isMultiple = item.quantity > 1;
 
           return (
             <li key={i} className={`border rounded-lg overflow-hidden ${isMine ? 'border-green-300' : 'border-gray-200'}`}>
               <div
                 onClick={() => {
                   if (fullyClaimedByQty && !isMine) return;
-                  setExpandedIndex(isExpanded ? null : i);
+                  if (isExpanded) { resetExpanded(); return; }
+                  setExpandedIndex(i);
+                  setShowContribute(false);
                   setClaimQty(1);
-                  setClaimAmount('');
-                  setClaimMode('quantity');
                 }}
                 className={`flex justify-between items-center px-3 py-2 cursor-pointer ${isMine ? 'bg-green-50' : fullyClaimedByQty ? 'bg-gray-50 opacity-50' : 'hover:bg-gray-50'}`}>
                 <div>
@@ -159,39 +190,71 @@ export default function SplitPage() {
               </div>
 
               {isExpanded && (
-                <div className="px-3 py-3 bg-white border-t border-gray-100">
-                  <div className="flex gap-2 mb-3">
-                    <button
-                      onClick={() => setClaimMode('quantity')}
-                      className={`flex-1 py-1.5 text-sm rounded ${claimMode === 'quantity' ? 'bg-black text-white' : 'border'}`}>
-                      Qty
-                    </button>
-                    <button
-                      onClick={() => setClaimMode('amount')}
-                      className={`flex-1 py-1.5 text-sm rounded ${claimMode === 'amount' ? 'bg-black text-white' : 'border'}`}>
-                      $ Amount
-                    </button>
-                  </div>
-                  {claimMode === 'quantity' ? (
-                    <div className="flex items-center gap-3 mb-3">
-                      <button onClick={() => setClaimQty(Math.max(1, claimQty - 1))} className="text-xl w-8 h-8 border rounded">−</button>
-                      <span className="font-bold">{claimQty}</span>
-                      <button onClick={() => setClaimQty(Math.min(item.quantity - claimedQty + (myClaim?.quantity || 0), claimQty + 1))} className="text-xl w-8 h-8 border rounded">+</button>
-                      <span className="text-gray-500 text-sm">of {item.quantity}</span>
-                    </div>
-                  ) : (
-                    <input
-                      type="number"
-                      placeholder="Your share ($)"
-                      value={claimAmount}
-                      onChange={e => setClaimAmount(e.target.value)}
-                      className="border rounded px-3 py-1.5 w-full mb-3 text-sm"
-                    />
-                  )}
+                <div className="px-3 py-3 bg-white border-t border-gray-100 space-y-3">
+                  {/* Main action row */}
                   <div className="flex gap-2">
-                    <button onClick={() => setExpandedIndex(null)} className="flex-1 border py-1.5 rounded text-sm">Cancel</button>
-                    <button onClick={submitClaim} className="flex-1 bg-black text-white py-1.5 rounded text-sm">Claim</button>
+                    {isMine ? (
+                      <button onClick={() => unclaim(i)} className="flex-1 border border-red-300 text-red-500 py-1.5 rounded text-sm">Unclaim</button>
+                    ) : isMultiple ? (
+                      <button onClick={() => submitClaim(i)} className="flex-1 bg-black text-white py-1.5 rounded text-sm">Claim All</button>
+                    ) : (
+                      <button onClick={() => submitClaim(i)} className="flex-1 bg-black text-white py-1.5 rounded text-sm">Claim</button>
+                    )}
+                    <button
+                      onClick={() => setShowContribute(!showContribute)}
+                      className={`flex-1 py-1.5 rounded text-sm border ${showContribute ? 'bg-black text-white' : ''}`}>
+                      Contribute
+                    </button>
+                    <button onClick={resetExpanded} className="flex-1 border py-1.5 rounded text-sm">Cancel</button>
                   </div>
+
+                  {/* Quantity row for multiple items */}
+                  {isMultiple && !showContribute && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-gray-500">Qty:</span>
+                      <button onClick={() => setClaimQty(Math.max(1, claimQty - 1))} className="w-7 h-7 border rounded text-lg">−</button>
+                      <span className="font-bold">{claimQty}</span>
+                      <button onClick={() => setClaimQty(Math.min(item.quantity - claimedQty + (myClaim?.quantity || 0), claimQty + 1))} className="w-7 h-7 border rounded text-lg">+</button>
+                      <span className="text-gray-400 text-sm">of {item.quantity}</span>
+                      <button onClick={() => submitClaim(i, { quantity: claimQty })} className="ml-auto bg-black text-white px-3 py-1 rounded text-sm">Claim {claimQty}</button>
+                    </div>
+                  )}
+
+                  {/* Contribute row */}
+                  {showContribute && (
+                    <div className="space-y-2">
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setContributeMode('amount')}
+                          className={`flex-1 py-1 text-sm rounded border ${contributeMode === 'amount' ? 'bg-black text-white' : ''}`}>
+                          Your Share ($)
+                        </button>
+                        <button
+                          onClick={() => setContributeMode('people')}
+                          className={`flex-1 py-1 text-sm rounded border ${contributeMode === 'people' ? 'bg-black text-white' : ''}`}>
+                          # of People
+                        </button>
+                      </div>
+                      {contributeMode === 'amount' ? (
+                        <input
+                          type="number"
+                          placeholder="e.g. 12.00"
+                          value={contributeAmount}
+                          onChange={e => setContributeAmount(e.target.value)}
+                          className="border rounded px-3 py-1.5 w-full text-sm"
+                        />
+                      ) : (
+                        <input
+                          type="number"
+                          placeholder="e.g. 3 (splits evenly)"
+                          value={contributePeople}
+                          onChange={e => setContributePeople(e.target.value)}
+                          className="border rounded px-3 py-1.5 w-full text-sm"
+                        />
+                      )}
+                      <button onClick={() => submitClaim(i)} className="w-full bg-black text-white py-1.5 rounded text-sm">Confirm Contribution</button>
+                    </div>
+                  )}
                 </div>
               )}
             </li>
