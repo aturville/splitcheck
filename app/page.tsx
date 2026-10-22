@@ -25,6 +25,7 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [payerChoice, setPayerChoice] = useState<'me' | 'someone' | 'skip' | null>(null);
   const [payerName, setPayerName] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -78,31 +79,62 @@ export default function Home() {
     return { name: payerName.trim() };
   };
 
-  const claimFirst = async () => {
-    if (!receipt) return;
+  const createSession = async (): Promise<string | null> => {
     const res = await fetch('/api/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ receipt, payer: buildPayer() }),
     });
+    if (!res.ok) {
+      alert('Could not create split: ' + (await res.text()));
+      return null;
+    }
     const { id } = await res.json();
-    window.location.href = `/split/${id}`;
+    if (!id) {
+      alert('Could not create split. Please try again.');
+      return null;
+    }
+    return id;
+  };
+
+  const claimFirst = async () => {
+    if (!receipt || creating) return;
+    setCreating(true);
+    try {
+      const id = await createSession();
+      if (!id) return;
+      window.location.href = `/split/${id}`;
+    } catch (err) {
+      console.error('claimFirst failed', err);
+      alert('Could not create split. Please try again.');
+    } finally {
+      setCreating(false);
+    }
   };
 
   const createSplit = async () => {
-    if (!receipt) return;
-    const res = await fetch('/api/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ receipt, payer: buildPayer() }),
-    });
-    const { id } = await res.json();
-    const url = `${window.location.origin}/split/${id}`;
-    if (navigator.share) {
-      await navigator.share({ title: 'SplitCheck', text: 'Tap to claim your items!', url });
-    } else {
-      await navigator.clipboard.writeText(url);
-      alert('Link copied!');
+    if (!receipt || creating) return;
+    setCreating(true);
+    try {
+      const id = await createSession();
+      if (!id) return;
+      const url = `${window.location.origin}/split/${id}`;
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: 'SplitCheck', text: 'Tap to claim your items!', url });
+        } catch (err) {
+          // User closed the share sheet; nothing to do
+          if ((err as Error).name !== 'AbortError') throw err;
+        }
+      } else {
+        await navigator.clipboard.writeText(url);
+        alert('Link copied!');
+      }
+    } catch (err) {
+      console.error('createSplit failed', err);
+      alert('Could not create split. Please try again.');
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -229,14 +261,18 @@ export default function Home() {
             </div>
 
             <button
+              type="button"
               onClick={claimFirst}
-              className="mt-6 w-full bg-gray-900 hover:bg-gray-800 text-white font-medium py-3 rounded-xl transition-colors">
-              Claim My Items First
+              disabled={creating}
+              className="mt-6 w-full bg-gray-900 hover:bg-gray-800 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
+              {creating ? 'Creating split...' : 'Claim My Items First'}
             </button>
 
             <button
+              type="button"
               onClick={createSplit}
-              className="mt-2 w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-xl transition-colors">
+              disabled={creating}
+              className="mt-2 w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50">
               Share Split Link
             </button>
 
