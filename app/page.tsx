@@ -26,6 +26,7 @@ export default function Home() {
   const [payerChoice, setPayerChoice] = useState<'me' | 'someone' | 'skip' | null>(null);
   const [payerName, setPayerName] = useState('');
   const [creating, setCreating] = useState(false);
+  const [tipInput, setTipInput] = useState('');
 
   const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -68,10 +69,41 @@ export default function Home() {
       }
       const data = await res.json();
       setReceipt(data);
+      setTipInput(data.tip > 0 ? data.tip.toFixed(2) : '');
     } catch {
       alert('Failed to parse receipt. Please try again.');
     }
     setLoading(false);
+  };
+
+  // Tip is often handwritten on the signed copy, so let the user set it by hand
+  const updateTip = (value: string) => {
+    setTipInput(value);
+    const tip = Math.max(0, parseFloat(value) || 0);
+    setReceipt(prev => prev ? { ...prev, tip, total: prev.total - prev.tip + tip } : prev);
+  };
+
+  const applyTipPercent = (pct: number) => {
+    if (!receipt) return;
+    updateTip((receipt.subtotal * pct / 100).toFixed(2));
+  };
+
+  const saveReceiptPhoto = async () => {
+    if (!image) return;
+    const blob = await (await fetch(image)).blob();
+    const file = new File([blob], `receipt-${new Date().toLocaleDateString('en-CA')}.jpg`, { type: 'image/jpeg' });
+    if (navigator.canShare?.({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file] });
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') alert('Could not save photo.');
+      }
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = image;
+    a.download = file.name;
+    a.click();
   };
 
   const buildPayer = () => {
@@ -103,6 +135,10 @@ export default function Home() {
     try {
       const id = await createSession();
       if (!id) return;
+      // If I paid, I'm also the one claiming, so skip asking my name again
+      if (payerChoice === 'me' && payerName.trim()) {
+        try { sessionStorage.setItem(`splitcheck:name:${id}`, payerName.trim()); } catch {}
+      }
       window.location.href = `/split/${id}`;
     } catch (err) {
       console.error('claimFirst failed', err);
@@ -143,6 +179,7 @@ export default function Home() {
     setReceipt(null);
     setPayerChoice(null);
     setPayerName('');
+    setTipInput('');
   };
 
   return (
@@ -230,11 +267,46 @@ export default function Home() {
               <div className="flex justify-between"><span>Subtotal</span><span>${receipt.subtotal.toFixed(2)}</span></div>
               {receipt.serviceCharge > 0 && <div className="flex justify-between"><span>Service Charge</span><span>${receipt.serviceCharge.toFixed(2)}</span></div>}
               {receipt.tax > 0 && <div className="flex justify-between"><span>Tax</span><span>${receipt.tax.toFixed(2)}</span></div>}
-              {receipt.tip > 0 && <div className="flex justify-between"><span>Tip</span><span>${receipt.tip.toFixed(2)}</span></div>}
+              <div className="flex justify-between items-center">
+                <span>Tip</span>
+                <div className="flex items-center gap-1">
+                  <span>$</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={tipInput}
+                    onChange={e => updateTip(e.target.value)}
+                    aria-label="Tip amount"
+                    className="w-20 border rounded-md px-2 py-1 text-right text-gray-900"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-1">
+                {[18, 20, 22].map(pct => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => applyTipPercent(pct)}
+                    className="px-2 py-1 border border-gray-300 rounded-md text-xs text-gray-600 hover:bg-gray-50">
+                    {pct}%
+                  </button>
+                ))}
+              </div>
               <div className="flex justify-between font-bold text-gray-900 border-t border-gray-200 pt-2 mt-2 text-base">
                 <span>Total</span><span>${receipt.total.toFixed(2)}</span>
               </div>
+              <p className="text-xs text-gray-400">Tip not on the receipt? Add what you wrote on the signed copy.</p>
             </div>
+
+            <button
+              type="button"
+              onClick={saveReceiptPhoto}
+              className="mt-3 inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm text-gray-600 bg-white hover:bg-gray-50 transition-colors">
+              Save receipt photo
+            </button>
 
             <div className="mt-6 border-t border-gray-100 pt-5">
               <p className="text-sm font-medium text-gray-700 mb-3">Who paid the bill?</p>

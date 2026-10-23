@@ -8,6 +8,9 @@ const redis = new Redis({
   token: (process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN)!,
 });
 
+// Keep splits around long enough to look back if questions come up later
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 90;
+
 interface Claim {
   name: string;
   quantity?: number;
@@ -28,7 +31,7 @@ export async function POST(req: NextRequest) {
     createdAt: new Date().toISOString(),
   };
   try {
-    await redis.set(id, JSON.stringify(session), { ex: 86400 });
+    await redis.set(id, JSON.stringify(session), { ex: SESSION_TTL_SECONDS });
   } catch (err) {
     console.error('Failed to save session', err);
     return new NextResponse('Storage is unavailable. Check the Upstash Redis connection.', { status: 503 });
@@ -53,7 +56,7 @@ export async function PATCH(req: NextRequest) {
 
   if (payer !== undefined) {
     session.payer = payer;
-    await redis.set(id, JSON.stringify(session), { ex: 86400 });
+    await redis.set(id, JSON.stringify(session), { ex: SESSION_TTL_SECONDS });
     return NextResponse.json(session);
   }
 
@@ -69,6 +72,6 @@ export async function PATCH(req: NextRequest) {
     session.claims[itemIndex].push(newClaim);
   }
 
-  await redis.set(id, JSON.stringify(session), { ex: 86400 });
+  await redis.set(id, JSON.stringify(session), { ex: SESSION_TTL_SECONDS });
   return NextResponse.json(session);
 }

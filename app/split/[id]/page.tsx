@@ -34,13 +34,18 @@ interface Session {
   };
   claims: Record<string, Claim[]>;
   payer?: Payer | null;
+  createdAt?: string;
 }
 
 export default function SplitPage() {
   const { id } = useParams();
   const [session, setSession] = useState<Session | null>(null);
-  const [myName, setMyName] = useState('');
-  const [nameSet, setNameSet] = useState(false);
+  // Payer who tapped "Claim My Items First" already typed their name on the home page
+  const [savedName] = useState(() => {
+    try { return typeof window === 'undefined' ? '' : sessionStorage.getItem(`splitcheck:name:${id}`) ?? ''; } catch { return ''; }
+  });
+  const [myName, setMyName] = useState(savedName);
+  const [nameSet, setNameSet] = useState(!!savedName);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
   const [showContribute, setShowContribute] = useState(false);
   const [contributeMode, setContributeMode] = useState<'amount' | 'people'>('amount');
@@ -155,6 +160,57 @@ export default function SplitPage() {
   if (!session) return <div className="p-6">Loading...</div>;
 
   const totalMultiplier = session.receipt.subtotal > 0 ? session.receipt.total / session.receipt.subtotal : 1;
+
+  // Plain-text record of who owes what, for texting or emailing to the group
+  const buildSummary = () => {
+    const { receipt } = session;
+    const people: Record<string, { total: number; lines: string[] }> = {};
+    let claimedSubtotal = 0;
+    receipt.items.forEach((item, i) => {
+      (session.claims[i] || []).forEach(c => {
+        const base = c.amount ? c.amount : c.quantity ? item.unitPrice * c.quantity : 0;
+        if (!base) return;
+        claimedSubtotal += base;
+        const person = people[c.name] ?? (people[c.name] = { total: 0, lines: [] });
+        person.total += base * totalMultiplier;
+        person.lines.push(c.quantity ? `${c.quantity}x ${item.name}` : `$${c.amount!.toFixed(2)} of ${item.name}`);
+      });
+    });
+
+    const date = new Date(session.createdAt ?? Date.now()).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    const lines = [`SplitCheck – ${date}`];
+    if (session.payer) lines.push(`Paid by ${session.payer.name}`);
+    lines.push('');
+    Object.entries(people).forEach(([name, p]) => {
+      lines.push(`${name}: $${p.total.toFixed(2)}`);
+      p.lines.forEach(l => lines.push(`  ${l}`));
+    });
+    const unclaimed = (receipt.subtotal - claimedSubtotal) * totalMultiplier;
+    if (unclaimed > 0.005) lines.push(`Unclaimed: $${unclaimed.toFixed(2)}`);
+    lines.push('');
+    lines.push(`Subtotal $${receipt.subtotal.toFixed(2)}`);
+    if (receipt.serviceCharge > 0) lines.push(`Service charge $${receipt.serviceCharge.toFixed(2)}`);
+    if (receipt.tax > 0) lines.push(`Tax $${receipt.tax.toFixed(2)}`);
+    if (receipt.tip > 0) lines.push(`Tip $${receipt.tip.toFixed(2)}`);
+    lines.push(`Total $${receipt.total.toFixed(2)}`);
+    lines.push('');
+    lines.push(window.location.href);
+    return lines.join('\n');
+  };
+
+  const sendSummary = async () => {
+    const text = buildSummary();
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'SplitCheck summary', text });
+      } catch (err) {
+        if ((err as Error).name !== 'AbortError') alert('Could not share summary.');
+      }
+    } else {
+      await navigator.clipboard.writeText(text);
+      alert('Summary copied!');
+    }
+  };
 
   const getMyTotal = () => {
     let total = 0;
@@ -416,6 +472,13 @@ export default function SplitPage() {
           className="mt-4 w-full bg-green-600 hover:bg-green-700 text-white font-medium py-3 rounded-xl transition-colors">
           Share Split Link
         </button>
+
+        <button
+          onClick={sendSummary}
+          className="mt-2 w-full border border-gray-300 text-gray-700 font-medium py-3 rounded-xl hover:bg-gray-50 transition-colors">
+          Send Summary
+        </button>
+        <p className="text-xs text-gray-400 text-center mt-2">Text or email a copy of who owes what to keep for later.</p>
       </div>
     </main>
   );
