@@ -26,7 +26,12 @@ export async function POST(req: NextRequest) {
     payer,
     createdAt: new Date().toISOString(),
   };
-  await redis.set(id, JSON.stringify(session), { ex: 86400 });
+  try {
+    await redis.set(id, JSON.stringify(session), { ex: 86400 });
+  } catch (err) {
+    console.error('Failed to save session', err);
+    return new NextResponse('Storage is unavailable. Check the Upstash Redis connection.', { status: 503 });
+  }
   return NextResponse.json({ id });
 }
 
