@@ -371,7 +371,7 @@ export default function SplitPage() {
 
                 {isExpanded && (
                   <div className="px-3 py-3 bg-white border-t border-gray-100 space-y-3">
-                    <div className="flex gap-2">
+                    <div className="grid grid-cols-3 gap-2">
                       {isMine ? (
                         <button onClick={() => unclaim(i)} className="flex-1 border border-red-300 text-red-500 py-1.5 rounded text-sm">Unclaim</button>
                       ) : isMultiple ? (
@@ -388,13 +388,14 @@ export default function SplitPage() {
                     </div>
 
                     {isMultiple && !showContribute && (
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm text-gray-500">Qty:</span>
-                        <button onClick={() => setClaimQty(Math.max(1, claimQty - 1))} className="w-7 h-7 border rounded text-lg">−</button>
-                        <span className="font-bold">{claimQty}</span>
-                        <button onClick={() => setClaimQty(Math.min(item.quantity - claimedQty + (myClaim?.quantity || 0), claimQty + 1))} className="w-7 h-7 border rounded text-lg">+</button>
-                        <span className="text-gray-400 text-sm">of {item.quantity}</span>
-                        <button onClick={() => submitClaim(i, { quantity: claimQty })} className="ml-auto bg-black text-white px-3 py-1 rounded text-sm">Claim {claimQty}</button>
+                      <div className="grid grid-cols-3 gap-2 items-center">
+                        <button onClick={() => submitClaim(i, { quantity: claimQty })} className="bg-black text-white py-1.5 rounded text-sm">Claim {claimQty}</button>
+                        <div className="col-span-2 flex items-center gap-3">
+                          <button onClick={() => setClaimQty(Math.max(1, claimQty - 1))} className="w-7 h-7 border rounded text-lg">−</button>
+                          <span className="font-bold">{claimQty}</span>
+                          <button onClick={() => setClaimQty(Math.min(item.quantity - claimedQty + (myClaim?.quantity || 0), claimQty + 1))} className="w-7 h-7 border rounded text-lg">+</button>
+                          <span className="text-gray-400 text-sm">of {item.quantity}</span>
+                        </div>
                       </div>
                     )}
 

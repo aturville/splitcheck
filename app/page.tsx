@@ -321,8 +321,11 @@ export default function Home() {
               {receipt.serviceCharge > 0 && <div className="flex justify-between"><span>Service Charge</span><span>${receipt.serviceCharge.toFixed(2)}</span></div>}
               {receipt.tax > 0 && <div className="flex justify-between"><span>Tax</span><span>${receipt.tax.toFixed(2)}</span></div>}
               <div className="flex justify-between items-center">
-                <span>Tip</span>
-                <div className="flex items-center gap-1">
+                <span className="pr-2">
+                  Tip
+                  <span className="block text-xs text-gray-400">Tip not on the receipt? Write what you paid here:</span>
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
                   <span>$</span>
                   <input
                     type="number"
@@ -338,12 +341,18 @@ export default function Home() {
                 </div>
               </div>
               <div className="flex justify-end gap-1">
+                <button
+                  type="button"
+                  onClick={() => updateTip('0.00')}
+                  className={`px-2 py-1 border rounded-md text-xs ${tipInput === '0.00' ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
+                  No tip
+                </button>
                 {[18, 20, 22].map(pct => (
                   <button
                     key={pct}
                     type="button"
                     onClick={() => applyTipPercent(pct)}
-                    className="px-2 py-1 border border-gray-300 rounded-md text-xs text-gray-600 hover:bg-gray-50">
+                    className={`px-2 py-1 border rounded-md text-xs ${tipInput !== '' && tipInput === (receipt.subtotal * pct / 100).toFixed(2) ? 'bg-gray-900 text-white border-gray-900' : 'border-gray-300 text-gray-600 hover:bg-gray-50'}`}>
                     {pct}%
                   </button>
                 ))}
@@ -351,7 +360,6 @@ export default function Home() {
               <div className="flex justify-between font-bold text-gray-900 border-t border-gray-200 pt-2 mt-2 text-base">
                 <span>Total</span><span>${receipt.total.toFixed(2)}</span>
               </div>
-              <p className="text-xs text-gray-400">Tip not on the receipt? Add what you wrote on the signed copy.</p>
             </div>
 
             <button
