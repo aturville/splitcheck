@@ -27,6 +27,7 @@ export default function Home() {
   const [payerName, setPayerName] = useState('');
   const [creating, setCreating] = useState(false);
   const [tipInput, setTipInput] = useState('');
+  const [editingPrice, setEditingPrice] = useState<{ index: number; value: string } | null>(null);
 
   const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -81,6 +82,20 @@ export default function Home() {
     setTipInput(value);
     const tip = Math.max(0, parseFloat(value) || 0);
     setReceipt(prev => prev ? { ...prev, tip, total: prev.total - prev.tip + tip } : prev);
+  };
+
+  // Fix a misread price; the printed subtotal stays as the reference to check against
+  const commitPrice = () => {
+    if (!editingPrice) return;
+    const price = Math.max(0, parseFloat(editingPrice.value) || 0);
+    setReceipt(prev => {
+      if (!prev) return prev;
+      const items = prev.items.map((item, i) =>
+        i === editingPrice.index ? { ...item, totalPrice: price, unitPrice: price / (item.quantity || 1) } : item
+      );
+      return { ...prev, items };
+    });
+    setEditingPrice(null);
   };
 
   const applyTipPercent = (pct: number) => {
@@ -249,16 +264,54 @@ export default function Home() {
 
         {receipt && (
           <div>
+            {(() => {
+              const itemsTotal = receipt.items.reduce((sum, item) => sum + item.totalPrice, 0);
+              const diff = receipt.subtotal - itemsTotal;
+              if (Math.abs(diff) < 0.01) return null;
+              return (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-900">
+                  <p className="font-medium">Items don&apos;t add up to the subtotal</p>
+                  <p className="mt-1">
+                    Items total ${itemsTotal.toFixed(2)} but the receipt subtotal is ${receipt.subtotal.toFixed(2)}
+                    {' '}(${Math.abs(diff).toFixed(2)} {diff > 0 ? 'missing' : 'extra'}). Tap a price to fix it.
+                  </p>
+                </div>
+              );
+            })()}
             <ul className="space-y-2">
               {receipt.items.map((item, i) => (
-                <li key={i} className="flex justify-between border-b border-gray-100 pb-2">
+                <li key={i} className="flex justify-between items-center border-b border-gray-100 pb-2">
                   <span className="text-sm">
                     <span className="font-medium">{item.quantity}x</span> {item.name}
                     {item.quantity > 1 && (
                       <span className="text-gray-400 text-xs ml-1">(${item.unitPrice.toFixed(2)} ea)</span>
                     )}
                   </span>
-                  <span className="text-sm">${item.totalPrice.toFixed(2)}</span>
+                  {editingPrice?.index === i ? (
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      autoFocus
+                      onFocus={e => e.target.select()}
+                      placeholder="0.00"
+                      value={editingPrice.value}
+                      onChange={e => setEditingPrice({ index: i, value: e.target.value })}
+                      onBlur={commitPrice}
+                      onKeyDown={e => { if (e.key === 'Enter') commitPrice(); }}
+                      aria-label={`Price for ${item.name}`}
+                      className="w-20 border rounded-md px-2 py-1 text-sm text-right"
+                    />
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setEditingPrice({ index: i, value: item.totalPrice > 0 ? item.totalPrice.toFixed(2) : '' })}
+                      aria-label={`Edit price for ${item.name}`}
+                      className={`text-sm px-1 rounded border-b border-dashed ${item.totalPrice === 0 ? 'text-amber-700 bg-amber-50 border-amber-400' : 'border-gray-300'}`}>
+                      ${item.totalPrice.toFixed(2)}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
