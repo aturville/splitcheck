@@ -375,7 +375,7 @@ export default function SplitPage() {
                       {isMine ? (
                         <button onClick={() => unclaim(i)} className="flex-1 border border-red-300 text-red-500 py-1.5 rounded text-sm">Unclaim</button>
                       ) : isMultiple ? (
-                        <button onClick={() => submitClaim(i)} className="flex-1 bg-black text-white py-1.5 rounded text-sm">Claim All</button>
+                        <button onClick={() => submitClaim(i, { quantity: Math.max(1, item.quantity - claimedQty + myClaimedQty) })} className="flex-1 bg-black text-white py-1.5 rounded text-sm">Claim All</button>
                       ) : (
                         <button onClick={() => submitClaim(i)} className="flex-1 bg-black text-white py-1.5 rounded text-sm">Claim</button>
                       )}
