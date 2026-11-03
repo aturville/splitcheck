@@ -231,9 +231,8 @@ export default function SplitPage() {
     return (session.claims[itemIndex] || []).reduce((sum, c) => sum + (c.quantity || 0), 0);
   };
 
-  const getClaimedAmount = (itemIndex: number) => {
-    return (session.claims[itemIndex] || []).reduce((sum, c) => sum + (c.amount || 0), 0);
-  };
+  // Value claims in dollars so quantity claims and contributions add up together
+  const claimValue = (c: Claim, item: Item) => (c.amount ? c.amount : (c.quantity || 0) * item.unitPrice);
 
   const myTotal = nameSet ? getMyTotal() : 0;
 
@@ -304,16 +303,22 @@ export default function SplitPage() {
           {session.receipt.items.map((item, i) => {
             const itemClaims = session.claims[i] || [];
             const claimedQty = getClaimedQty(i);
-            const claimedAmount = getClaimedAmount(i);
             const myClaim = itemClaims.find(c => c.name === myName);
             const isMine = !!myClaim;
             const isMultiple = item.quantity > 1;
             const otherClaims = itemClaims.filter(c => c.name !== myName);
 
-            const isFull = isMultiple
-              ? claimedQty >= item.quantity || claimedAmount >= item.totalPrice
+            // Only lock others out once claims cover the whole item; partial claims stay open
+            const claimedValue = itemClaims.reduce((sum, c) => sum + claimValue(c, item), 0);
+            const isFull = item.totalPrice > 0
+              ? claimedValue >= item.totalPrice - 0.005
               : itemClaims.length > 0;
             const isDisabled = isFull && !isMine;
+
+            const othersValue = otherClaims.reduce((sum, c) => sum + claimValue(c, item), 0);
+            const remainingForMe = Math.max(0, Math.round((item.totalPrice - othersValue) * 100) / 100);
+            const othersUsedAmounts = otherClaims.some(c => c.amount);
+            const remainingQty = item.quantity - otherClaims.reduce((sum, c) => sum + (c.quantity || 0), 0);
 
             const myClaimedQty = myClaim?.quantity || 0;
             const iFullyOwn = isMine && otherClaims.length === 0 && (
@@ -322,13 +327,13 @@ export default function SplitPage() {
 
             let progressText: string | null = null;
             let progressPct = 0;
-            if (!iFullyOwn) {
-              if (isMultiple && claimedQty > 0) {
+            if (!iFullyOwn && itemClaims.length > 0) {
+              if (isMultiple && !itemClaims.some(c => c.amount)) {
                 progressText = `${claimedQty} of ${item.quantity} claimed`;
                 progressPct = claimedQty / item.quantity;
-              } else if (claimedAmount > 0) {
-                progressText = `Claimed: $${claimedAmount.toFixed(2)} of $${item.totalPrice.toFixed(2)}`;
-                progressPct = item.totalPrice > 0 ? claimedAmount / item.totalPrice : 0;
+              } else {
+                progressText = `Claimed: $${claimedValue.toFixed(2)} of $${item.totalPrice.toFixed(2)}`;
+                progressPct = item.totalPrice > 0 ? claimedValue / item.totalPrice : 0;
               }
             }
 
@@ -374,8 +379,10 @@ export default function SplitPage() {
                     <div className="grid grid-cols-3 gap-2">
                       {isMine ? (
                         <button onClick={() => unclaim(i)} className="flex-1 border border-red-300 text-red-500 py-1.5 rounded text-sm">Unclaim</button>
-                      ) : isMultiple ? (
-                        <button onClick={() => submitClaim(i, { quantity: Math.max(1, item.quantity - claimedQty + myClaimedQty) })} className="flex-1 bg-black text-white py-1.5 rounded text-sm">Claim All</button>
+                      ) : isMultiple && !othersUsedAmounts ? (
+                        <button onClick={() => submitClaim(i, { quantity: Math.max(1, remainingQty) })} className="flex-1 bg-black text-white py-1.5 rounded text-sm">{otherClaims.length > 0 ? 'Claim Rest' : 'Claim All'}</button>
+                      ) : otherClaims.length > 0 ? (
+                        <button onClick={() => submitClaim(i, { amount: remainingForMe })} className="flex-1 bg-black text-white py-1.5 rounded text-sm">Claim Rest</button>
                       ) : (
                         <button onClick={() => submitClaim(i)} className="flex-1 bg-black text-white py-1.5 rounded text-sm">Claim</button>
                       )}
@@ -416,7 +423,7 @@ export default function SplitPage() {
                         {contributeMode === 'amount' ? (
                           <input
                             type="number"
-                            placeholder="e.g. 12.00"
+                            placeholder={otherClaims.length > 0 ? `Remaining: $${remainingForMe.toFixed(2)}` : 'e.g. 12.00'}
                             value={contributeAmount}
                             onChange={e => setContributeAmount(e.target.value)}
                             className="border rounded px-3 py-1.5 w-full text-sm"

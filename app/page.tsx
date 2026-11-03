@@ -18,6 +18,34 @@ interface Receipt {
   total: number;
 }
 
+// Strings while editing so a half-typed number like "8." isn't lost
+interface RowDraft {
+  index: number;
+  name: string;
+  quantity: string;
+  unitPrice: string;
+  totalPrice: string;
+}
+
+type SummaryKey = 'subtotal' | 'serviceCharge' | 'tax' | 'total';
+
+const SUMMARY_LABELS: Record<SummaryKey, string> = {
+  subtotal: 'Subtotal',
+  serviceCharge: 'Service Charge',
+  tax: 'Tax',
+  total: 'Total',
+};
+
+const toMoney = (value: string) => Math.max(0, Math.round((parseFloat(value) || 0) * 100) / 100);
+
+function PencilIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+    </svg>
+  );
+}
+
 export default function Home() {
   const [image, setImage] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
@@ -27,7 +55,8 @@ export default function Home() {
   const [payerName, setPayerName] = useState('');
   const [creating, setCreating] = useState(false);
   const [tipInput, setTipInput] = useState('');
-  const [editingPrice, setEditingPrice] = useState<{ index: number; value: string } | null>(null);
+  const [editingRow, setEditingRow] = useState<RowDraft | null>(null);
+  const [editingField, setEditingField] = useState<{ key: SummaryKey; value: string } | null>(null);
 
   const handleImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -84,18 +113,71 @@ export default function Home() {
     setReceipt(prev => prev ? { ...prev, tip, total: prev.total - prev.tip + tip } : prev);
   };
 
-  // Fix a misread price; the printed subtotal stays as the reference to check against
-  const commitPrice = () => {
-    if (!editingPrice) return;
-    const price = Math.max(0, parseFloat(editingPrice.value) || 0);
+  // Low ink or misreads: let the host fix rows before sharing
+  const startEditRow = (index: number) => {
+    if (!receipt) return;
+    const item = receipt.items[index];
+    setEditingRow({
+      index,
+      name: item.name,
+      quantity: String(item.quantity),
+      unitPrice: item.unitPrice > 0 ? item.unitPrice.toFixed(2) : '',
+      totalPrice: item.totalPrice > 0 ? item.totalPrice.toFixed(2) : '',
+    });
+  };
+
+  // Keep total = quantity × unit price whichever one the user changes
+  const updateDraft = (field: 'name' | 'quantity' | 'unitPrice' | 'totalPrice', value: string) => {
+    setEditingRow(prev => {
+      if (!prev) return prev;
+      const next = { ...prev, [field]: value };
+      const qty = parseInt(next.quantity) || 0;
+      if ((field === 'quantity' || field === 'unitPrice') && qty > 0 && next.unitPrice !== '') {
+        next.totalPrice = (toMoney(next.unitPrice) * qty).toFixed(2);
+      } else if (field === 'totalPrice' && qty > 0 && value !== '') {
+        next.unitPrice = (toMoney(value) / qty).toFixed(2);
+      }
+      return next;
+    });
+  };
+
+  const saveRow = () => {
+    if (!editingRow) return;
+    const quantity = Math.max(1, parseInt(editingRow.quantity) || 1);
+    const totalPrice = toMoney(editingRow.totalPrice);
+    const item = {
+      name: editingRow.name.trim() || 'Item',
+      quantity,
+      totalPrice,
+      unitPrice: totalPrice / quantity,
+    };
+    setReceipt(prev => prev ? { ...prev, items: prev.items.map((it, i) => (i === editingRow.index ? item : it)) } : prev);
+    setEditingRow(null);
+  };
+
+  const deleteRow = (index: number) => {
+    setReceipt(prev => prev ? { ...prev, items: prev.items.filter((_, i) => i !== index) } : prev);
+    setEditingRow(null);
+  };
+
+  const addRow = () => {
+    if (!receipt) return;
+    const index = receipt.items.length;
+    setReceipt({ ...receipt, items: [...receipt.items, { name: '', quantity: 1, totalPrice: 0, unitPrice: 0 }] });
+    setEditingRow({ index, name: '', quantity: '1', unitPrice: '', totalPrice: '' });
+  };
+
+  // Fees move the total with them, like tip; editing the total sets it directly
+  const saveField = () => {
+    if (!editingField) return;
+    const value = toMoney(editingField.value);
+    const { key } = editingField;
     setReceipt(prev => {
       if (!prev) return prev;
-      const items = prev.items.map((item, i) =>
-        i === editingPrice.index ? { ...item, totalPrice: price, unitPrice: price / (item.quantity || 1) } : item
-      );
-      return { ...prev, items };
+      if (key === 'total') return { ...prev, total: value };
+      return { ...prev, [key]: value, total: Math.round((prev.total - prev[key] + value) * 100) / 100 };
     });
-    setEditingPrice(null);
+    setEditingField(null);
   };
 
   const applyTipPercent = (pct: number) => {
@@ -195,6 +277,8 @@ export default function Home() {
     setPayerChoice(null);
     setPayerName('');
     setTipInput('');
+    setEditingRow(null);
+    setEditingField(null);
   };
 
   return (
@@ -273,53 +357,138 @@ export default function Home() {
                   <p className="font-medium">Items don&apos;t add up to the subtotal</p>
                   <p className="mt-1">
                     Items total ${itemsTotal.toFixed(2)} but the receipt subtotal is ${receipt.subtotal.toFixed(2)}
-                    {' '}(${Math.abs(diff).toFixed(2)} {diff > 0 ? 'missing' : 'extra'}). Tap a price to fix it.
+                    {' '}(${Math.abs(diff).toFixed(2)} {diff > 0 ? 'missing' : 'extra'}). Tap an item to fix it, or add a missing one.
                   </p>
                 </div>
               );
             })()}
             <ul className="space-y-2">
               {receipt.items.map((item, i) => (
-                <li key={i} className="flex justify-between items-center border-b border-gray-100 pb-2">
-                  <span className="text-sm">
-                    <span className="font-medium">{item.quantity}x</span> {item.name}
-                    {item.quantity > 1 && (
-                      <span className="text-gray-400 text-xs ml-1">(${item.unitPrice.toFixed(2)} ea)</span>
-                    )}
-                  </span>
-                  {editingPrice?.index === i ? (
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      min="0"
-                      step="0.01"
-                      autoFocus
-                      onFocus={e => e.target.select()}
-                      placeholder="0.00"
-                      value={editingPrice.value}
-                      onChange={e => setEditingPrice({ index: i, value: e.target.value })}
-                      onBlur={commitPrice}
-                      onKeyDown={e => { if (e.key === 'Enter') commitPrice(); }}
-                      aria-label={`Price for ${item.name}`}
-                      className="w-20 border rounded-md px-2 py-1 text-sm text-right"
-                    />
+                <li key={i} className="border-b border-gray-100 pb-2">
+                  {editingRow?.index === i ? (
+                    <div className="space-y-2 py-1">
+                      <input
+                        autoFocus
+                        placeholder="Item name"
+                        value={editingRow.name}
+                        onChange={e => updateDraft('name', e.target.value)}
+                        aria-label="Item name"
+                        className="w-full border rounded-md px-2 py-2 text-sm"
+                      />
+                      <div className="grid grid-cols-3 gap-2">
+                        <label className="text-xs text-gray-500">
+                          Qty
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min="1"
+                            step="1"
+                            value={editingRow.quantity}
+                            onChange={e => updateDraft('quantity', e.target.value)}
+                            onFocus={e => e.target.select()}
+                            className="mt-0.5 w-full border rounded-md px-2 py-2 text-sm text-gray-900"
+                          />
+                        </label>
+                        <label className="text-xs text-gray-500">
+                          Each $
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={editingRow.unitPrice}
+                            onChange={e => updateDraft('unitPrice', e.target.value)}
+                            onFocus={e => e.target.select()}
+                            className="mt-0.5 w-full border rounded-md px-2 py-2 text-sm text-gray-900"
+                          />
+                        </label>
+                        <label className="text-xs text-gray-500">
+                          Total $
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={editingRow.totalPrice}
+                            onChange={e => updateDraft('totalPrice', e.target.value)}
+                            onFocus={e => e.target.select()}
+                            className="mt-0.5 w-full border rounded-md px-2 py-2 text-sm text-gray-900"
+                          />
+                        </label>
+                      </div>
+                      <div className="flex gap-2">
+                        <button type="button" onClick={saveRow} className="flex-1 bg-gray-900 text-white py-2 rounded-md text-sm">Done</button>
+                        <button type="button" onClick={() => deleteRow(i)} className="flex-1 border border-red-300 text-red-600 py-2 rounded-md text-sm">Delete</button>
+                      </div>
+                    </div>
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setEditingPrice({ index: i, value: item.totalPrice > 0 ? item.totalPrice.toFixed(2) : '' })}
-                      aria-label={`Edit price for ${item.name}`}
-                      className={`text-sm px-1 rounded border-b border-dashed ${item.totalPrice === 0 ? 'text-amber-700 bg-amber-50 border-amber-400' : 'border-gray-300'}`}>
-                      ${item.totalPrice.toFixed(2)}
+                      onClick={() => startEditRow(i)}
+                      aria-label={`Edit ${item.name || 'item'}`}
+                      className="w-full flex justify-between items-center gap-2 text-left">
+                      <span className="text-sm">
+                        <span className="font-medium">{item.quantity}x</span> {item.name || <span className="text-gray-400">Unnamed item</span>}
+                        {item.quantity > 1 && (
+                          <span className="text-gray-400 text-xs ml-1">(${item.unitPrice.toFixed(2)} ea)</span>
+                        )}
+                      </span>
+                      <span className="flex items-center gap-2 shrink-0">
+                        <span className={`text-sm px-1 rounded ${item.totalPrice === 0 ? 'text-amber-700 bg-amber-50' : ''}`}>
+                          ${item.totalPrice.toFixed(2)}
+                        </span>
+                        <span className="text-gray-400 p-1"><PencilIcon /></span>
+                      </span>
                     </button>
                   )}
                 </li>
               ))}
             </ul>
 
+            <button
+              type="button"
+              onClick={addRow}
+              className="mt-2 w-full py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-50">
+              + Add item
+            </button>
+
             <div className="mt-4 space-y-1 text-sm text-gray-500">
-              <div className="flex justify-between"><span>Subtotal</span><span>${receipt.subtotal.toFixed(2)}</span></div>
-              {receipt.serviceCharge > 0 && <div className="flex justify-between"><span>Service Charge</span><span>${receipt.serviceCharge.toFixed(2)}</span></div>}
-              {receipt.tax > 0 && <div className="flex justify-between"><span>Tax</span><span>${receipt.tax.toFixed(2)}</span></div>}
+              {(['subtotal', 'serviceCharge', 'tax'] as const).map(key => (
+                <div key={key} className="flex justify-between items-center min-h-8">
+                  <span>{SUMMARY_LABELS[key]}</span>
+                  {editingField?.key === key ? (
+                    <span className="flex items-center gap-1">
+                      <span>$</span>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min="0"
+                        step="0.01"
+                        autoFocus
+                        onFocus={e => e.target.select()}
+                        placeholder="0.00"
+                        value={editingField.value}
+                        onChange={e => setEditingField({ key, value: e.target.value })}
+                        onBlur={saveField}
+                        onKeyDown={e => { if (e.key === 'Enter') saveField(); }}
+                        aria-label={SUMMARY_LABELS[key]}
+                        className="w-20 border rounded-md px-2 py-1 text-right text-gray-900"
+                      />
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setEditingField({ key, value: receipt[key] > 0 ? receipt[key].toFixed(2) : '' })}
+                      aria-label={`Edit ${SUMMARY_LABELS[key]}`}
+                      className="flex items-center gap-2">
+                      <span>${receipt[key].toFixed(2)}</span>
+                      <span className="text-gray-400 p-1"><PencilIcon /></span>
+                    </button>
+                  )}
+                </div>
+              ))}
               <div className="flex justify-between items-center">
                 <span className="pr-2">
                   Tip
@@ -357,8 +526,36 @@ export default function Home() {
                   </button>
                 ))}
               </div>
-              <div className="flex justify-between font-bold text-gray-900 border-t border-gray-200 pt-2 mt-2 text-base">
-                <span>Total</span><span>${receipt.total.toFixed(2)}</span>
+              <div className="flex justify-between items-center font-bold text-gray-900 border-t border-gray-200 pt-2 mt-2 text-base">
+                <span>Total</span>
+                {editingField?.key === 'total' ? (
+                  <span className="flex items-center gap-1">
+                    <span>$</span>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min="0"
+                      step="0.01"
+                      autoFocus
+                      onFocus={e => e.target.select()}
+                      value={editingField.value}
+                      onChange={e => setEditingField({ key: 'total', value: e.target.value })}
+                      onBlur={saveField}
+                      onKeyDown={e => { if (e.key === 'Enter') saveField(); }}
+                      aria-label="Total"
+                      className="w-24 border rounded-md px-2 py-1 text-right font-normal"
+                    />
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setEditingField({ key: 'total', value: receipt.total.toFixed(2) })}
+                    aria-label="Edit Total"
+                    className="flex items-center gap-2">
+                    <span>${receipt.total.toFixed(2)}</span>
+                    <span className="text-gray-400 p-1 font-normal"><PencilIcon /></span>
+                  </button>
+                )}
               </div>
             </div>
 
