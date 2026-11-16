@@ -14,6 +14,8 @@ interface Claim {
   name: string;
   quantity?: number;
   amount?: number;
+  // Set when the claim came from "# of People": the item is meant to be split this many ways
+  splitCount?: number;
 }
 
 interface Payer {
@@ -76,7 +78,7 @@ export default function SplitPage() {
 
   const submitClaim = async (itemIndex: number, override?: Partial<Claim>) => {
     const item = session!.receipt.items[itemIndex];
-    let payload: { id: unknown; itemIndex: number; name: string; quantity?: number; amount?: number } = {
+    let payload: { id: unknown; itemIndex: number; name: string; quantity?: number; amount?: number; splitCount?: number } = {
       id,
       itemIndex,
       name: myName,
@@ -88,15 +90,22 @@ export default function SplitPage() {
       payload = { ...payload, ...override };
       if (override.amount !== undefined) newClaim.amount = override.amount;
       if (override.quantity !== undefined) newClaim.quantity = override.quantity;
+      if (override.splitCount !== undefined) newClaim.splitCount = override.splitCount;
     } else if (showContribute) {
       if (contributeMode === 'amount') {
         payload.amount = parseFloat(contributeAmount);
         newClaim.amount = parseFloat(contributeAmount);
       } else {
         const people = parseInt(contributePeople);
+        if (!(people > 0)) return;
         const amount = item.totalPrice / people;
         payload.amount = amount;
         newClaim.amount = amount;
+        // Remember the split so later people can join it with one tap
+        if (people > 1) {
+          payload.splitCount = people;
+          newClaim.splitCount = people;
+        }
       }
     } else {
       const qty = item.quantity > 1 ? claimQty : 1;
@@ -308,12 +317,27 @@ export default function SplitPage() {
             const isMultiple = item.quantity > 1;
             const otherClaims = itemClaims.filter(c => c.name !== myName);
 
-            // Only lock others out once claims cover the whole item; partial claims stay open
+            // "# of People" splits: use the most common split size if people entered different ones
+            const splitCounts = itemClaims.map(c => c.splitCount).filter((n): n is number => !!n);
+            const splitN = splitCounts.length
+              ? [...new Set(splitCounts)].sort((a, b) =>
+                  splitCounts.filter(n => n === b).length - splitCounts.filter(n => n === a).length || b - a)[0]
+              : null;
+            const splitJoiners = splitN ? itemClaims.filter(c => c.splitCount === splitN) : [];
+            const splitShare = splitN ? item.totalPrice / splitN : 0;
+            const splitFull = !!splitN && splitJoiners.length >= splitN;
+            const iJoinedSplit = !!splitN && myClaim?.splitCount === splitN;
+
+            // Only lock others out once claims cover the whole item; partial claims stay open.
+            // A split is full once splitN people have joined, but stays openable so more can join.
             const claimedValue = itemClaims.reduce((sum, c) => sum + claimValue(c, item), 0);
-            const isFull = item.totalPrice > 0
-              ? claimedValue >= item.totalPrice - 0.005
-              : itemClaims.length > 0;
-            const isDisabled = isFull && !isMine;
+            const isFull = splitN
+              ? splitFull
+              : item.totalPrice > 0
+                ? claimedValue >= item.totalPrice - 0.005
+                : itemClaims.length > 0;
+            const isDimmed = isFull && !isMine;
+            const isDisabled = isDimmed && !splitN;
 
             const othersValue = otherClaims.reduce((sum, c) => sum + claimValue(c, item), 0);
             const remainingForMe = Math.max(0, Math.round((item.totalPrice - othersValue) * 100) / 100);
@@ -328,7 +352,10 @@ export default function SplitPage() {
             let progressText: string | null = null;
             let progressPct = 0;
             if (!iFullyOwn && itemClaims.length > 0) {
-              if (isMultiple && !itemClaims.some(c => c.amount)) {
+              if (splitN) {
+                progressText = `${splitJoiners.length} of ${splitN} joined`;
+                progressPct = splitJoiners.length / splitN;
+              } else if (isMultiple && !itemClaims.some(c => c.amount)) {
                 progressText = `${claimedQty} of ${item.quantity} claimed`;
                 progressPct = claimedQty / item.quantity;
               } else {
@@ -346,12 +373,18 @@ export default function SplitPage() {
                     if (!nameSet || isDisabled) return;
                     if (isExpanded) { resetExpanded(); return; }
                     setExpandedIndex(i);
-                    setShowContribute(false);
+                    // Items with a split open straight to Contribute so Join split is one tap away
+                    setShowContribute(!!splitN && !iJoinedSplit);
                     setClaimQty(1);
                   }}
-                  className={`flex justify-between items-center px-3 py-2 ${!nameSet ? 'cursor-default' : 'cursor-pointer'} ${isMine ? 'bg-green-50' : isDisabled ? 'bg-gray-50 opacity-50 cursor-not-allowed' : !nameSet ? '' : 'hover:bg-gray-50'}`}>
+                  className={`flex justify-between items-center px-3 py-2 ${!nameSet ? 'cursor-default' : 'cursor-pointer'} ${isMine ? 'bg-green-50' : isDisabled ? 'bg-gray-50 opacity-50 cursor-not-allowed' : isDimmed ? 'bg-gray-50 opacity-60' : !nameSet ? '' : 'hover:bg-gray-50'}`}>
                   <div>
                     <span className="font-medium">{item.quantity}x {item.name}</span>
+                    {splitN && (
+                      <div className="text-xs font-medium text-blue-700 mt-0.5">
+                        Split {splitN} ways by {splitJoiners[0]?.name} — ${splitShare.toFixed(2)} each
+                      </div>
+                    )}
                     {itemClaims.length > 0 && (
                       <div className="text-xs text-gray-500 mt-0.5">
                         {itemClaims.map((c, j) => (
@@ -366,7 +399,7 @@ export default function SplitPage() {
                 </div>
 
                 {progressText && (
-                  <div className={`px-3 pb-2 pt-1 ${isDisabled ? 'opacity-50' : ''}`}>
+                  <div className={`px-3 pb-2 pt-1 ${isDimmed ? 'opacity-50' : ''}`}>
                     <p className="text-xs text-gray-400">{progressText}</p>
                     <div className="mt-1 h-1 bg-gray-200 rounded-full overflow-hidden">
                       <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${Math.min(100, progressPct * 100)}%` }} />
@@ -408,6 +441,20 @@ export default function SplitPage() {
 
                     {showContribute && (
                       <div className="space-y-2">
+                        {splitN && !iJoinedSplit && (
+                          <div>
+                            <button
+                              onClick={() => submitClaim(i, { amount: splitShare, splitCount: splitN })}
+                              className="w-full bg-blue-600 text-white font-medium py-2.5 rounded text-sm">
+                              Join split — pay ${splitShare.toFixed(2)} ({splitFull ? 'extra person' : `${splitJoiners.length + 1} of ${splitN}`})
+                            </button>
+                            {splitFull && (
+                              <p className="text-xs text-amber-700 mt-1">
+                                {splitJoiners.length} of {splitN} already joined — this will overshoot.
+                              </p>
+                            )}
+                          </div>
+                        )}
                         <div className="flex gap-2">
                           <button
                             onClick={() => setContributeMode('amount')}

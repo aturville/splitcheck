@@ -15,6 +15,8 @@ interface Claim {
   name: string;
   quantity?: number;
   amount?: number;
+  // Set when the claim came from "# of People": the item is meant to be split this many ways
+  splitCount?: number;
 }
 
 export async function POST(req: NextRequest) {
@@ -49,7 +51,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const { id, itemIndex, name, quantity, amount, unclaim, payer } = await req.json();
+  const { id, itemIndex, name, quantity, amount, splitCount, unclaim, payer } = await req.json();
   const data = await redis.get(id);
   if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 });
   const session = typeof data === 'string' ? JSON.parse(data) : data;
@@ -69,6 +71,7 @@ export async function PATCH(req: NextRequest) {
     const newClaim: Claim = { name };
     if (amount !== undefined && amount !== null) newClaim.amount = amount;
     if (quantity !== undefined && quantity !== null) newClaim.quantity = quantity;
+    if (Number.isInteger(splitCount) && splitCount > 1) newClaim.splitCount = splitCount;
     session.claims[itemIndex].push(newClaim);
   }
 
